@@ -1,0 +1,657 @@
+---
+title: "validatedDataModelBuilding"
+output: html_document
+date: "2025-01-06"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE) #for all chunks, we dont want to see code in markdown output
+
+```
+
+
+
+```{r imports, warning = FALSE, message = FALSE}
+
+if (!require("pacman")) 
+  install.packages("pacman")
+
+pacman::p_load(
+  here, #import data
+  tidyverse, #ggplot, dplyr, readr etc.
+  SMOTEWB, #for SMOTE resampling of minority class
+  glmnet, #for lasso logit
+  mlr3, #machine learning package
+  mlr3learners, #essential learning types for mlr3
+  ranger, #used with mlr3learners for randomforest
+  mlr3tuning, #hyperparameter tuning of models
+  mlr3viz, #machine learning visualization
+  scorecard, #for WOE/IV testing
+  e1071, #used with mlr3learners for Support Vector Machine (SVM)
+  stats, #used with mlr3learners for Logistic Regression
+  envalysis, #for publication ready plots
+  precrec, #for rocauc
+  DiceKriging, #for MBO optimization 
+  zoo, #for rolling sums
+  patchwork, #for combining plots
+  rgenoud
+)
+
+```
+
+
+
+```{r read data}
+#add in the above {r = read data} echo=FALSE if we want to hide the code that generates a plot (though there are no plots in this chunk, just an aside...)
+
+m8Data <- readRDS(here("mine8StandardizedDataForML.rds")) 
+head(m8Data) 
+
+m8UnStandardData <- readRDS(here("mine8DataForML.rds")) 
+head(m8Data) 
+
+```
+
+
+```{r WOE IV Testing}
+
+
+
+m8WOE <- subset(m8UnStandardData, select = -c(datetime))
+
+m8WOE <- m8WOE |> 
+  mutate(irradiance = case_when(
+    irradiance < 0 ~ 0,
+    .default = irradiance))
+df <-m8WOE
+options(scorecard.bin_close_right = FALSE, scorecard.bin_close_left = FALSE)
+
+breaks_list <- list(intensity = seq(min(df$intensity), max(df$intensity), by = ((max(df$intensity)-min(df$intensity))/5)), 
+                    rainmm = seq(min(df$rainmm), max(df$rainmm), by = ((max(df$rainmm)-min(df$rainmm))/5)),
+                    tempC = seq(min(df$tempC), max(df$tempC), by = ((max(df$tempC)-min(df$tempC))/5)), #forces to 5 bins, function doesnt coopoerate so change math
+                    irradiance = seq(min(df$irradiance), max(df$irradiance), by = ((max(df$irradiance)-min(df$irradiance))/5)), #forces to 5 bins, function doesnt coopoerate so change math
+                    solarInsol24 = seq(min(df$solarInsol24), max(df$solarInsol24), by = ((max(df$solarInsol24)-min(df$solarInsol24))/5)),
+                    windMS = seq(min(df$windMS), max(df$windMS), by = ((max(df$windMS)-min(df$windMS))/5)), #forces to 5 bins, function doesnt coopoerate so change math
+                    sumrain6 = seq(min(df$sumrain6), max(df$sumrain6), by = ((max(df$sumrain6)-min(df$sumrain6))/5)),
+                    sumrain24 = seq(min(df$sumrain24), max(df$sumrain24), by = ((max(df$sumrain24)-min(df$sumrain24))/5)))
+
+woebin_hour <- woebin(df, 
+                      y = 'rockfall', 
+                      #breaks_list  = breaks_list,
+                      positive = 1,
+                      method = "tree")
+woebin_plot(woebin_hour)
+#reorder data_hour to use woe values for prediction
+data_hour_woe <- woebin_ply(df, woebin_hour)
+
+
+```
+
+
+
+
+```{r split data}
+#since we use cross validation we dont need validation dataset
+
+set.seed(123)  # For reproducibility
+m8Data$id <- 1:nrow(m8Data)# Create ID column
+train <- m8Data |> sample_frac(0.80)  # 80% training data
+test <- anti_join(m8Data, train, by = "id")  # Remaining 20% data
+
+test <- subset(test, select = -c(id)) # Drop unnecessary columns
+x_test <- subset(test, select = -c(rockfall)) #everything except rockfall
+y_test <- as.factor((test$rockfall))#just rockfall
+
+
+#plot training data
+
+
+
+# Ensure rockfall is treated as a factor
+train$rockfall <- as.factor(train$rockfall)
+
+m8ValBar <- ggplot(train, aes(x = "Rockfall", fill = rockfall)) +
+  geom_bar(alpha = 0.8, width = 0.5) +
+  labs(
+    title = "Distribution of Rockfall Validated Data",
+    x = "",
+    y = "Count",
+    fill = "Rockfall Category"
+  ) +
+  scale_fill_manual(
+    values = c("0" = "steelblue", "1" = "red"),
+    labels = c("0" = "Rockfall Not Observed", "1" = "Rockfall Observed")
+  ) +
+  theme_publish() +
+  theme(
+    axis.text.x = element_blank(),  # Hide x-axis tick labels
+    axis.title.x = element_blank(),  # X-axis title size
+    axis.title.y = element_text(size = 16),  # Y-axis title size
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),  # Title size
+    legend.text = element_text(size = 14),  # Legend text size
+    legend.title = element_blank()  # Legend title size
+  )
+
+ggsave(file = here("figures/m8ValRockfalls.svg"), plot = m8ValBar, height = 5, width = 7)
+
+count <- train %>%
+  group_by(rockfall) %>%
+  summarise(count = n(), .groups = "drop")
+
+
+```
+
+RESAMPLING METHOD
+
+```{r resample with SMOTE}
+set.seed(123)  # For reproducibility
+feats <- subset(train, select = -c(datetime, rockfall,id))
+resp <- as.factor((train$rockfall))
+
+trainSMOTE <- SMOTE(feats, resp)
+xSMOTE <- trainSMOTE$x_new #keep as a matrix for glmnet
+ySMOTE <- as.factor(trainSMOTE$y_new) #needs to be factor for glmnet
+plotTrainSMOTE <- as.data.frame(xSMOTE)  # Convert matrix to data frame
+plotTrainSMOTE$rockfall <- ySMOTE 
+
+
+m8SMOTEValRockfalls <- ggplot(plotTrainSMOTE, aes(x = "Rockfall", fill = rockfall)) +
+  geom_bar(alpha = 0.8, width = 0.5) +
+  labs(
+    title = "Distribution of Rockfall Validated Data \nResampled with SMOTE",
+    x = "",
+    y = "Count",
+    fill = "Rockfall Category"
+  ) +
+  scale_fill_manual(
+    values = c("0" = "steelblue", "1" = "red"),
+    labels = c("0" = "Rockfall Not Observed", "1" = "Rockfall Observed")
+  ) +
+  theme_publish() +
+  theme(
+    axis.text.x = element_blank(),  # Hide x-axis tick labels
+    axis.title.x = element_blank(),  # X-axis title size
+    axis.title.y = element_text(size = 16),  # Y-axis title size
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),  # Title size
+    legend.text = element_text(size = 14),  # Legend text size
+    legend.title = element_blank()  # Legend title size
+  )
+
+
+ggsave(file = here("figures/m8SMOTEValRockfalls.svg"), plot = m8SMOTEValRockfalls, height = 5, width = 7)
+
+
+# Combine data for non-SMOTE and SMOTE
+nonSMOTEData <- train
+nonSMOTEData$method <- "Original Data"
+plotTrainSMOTE$method <- "Resampled with SMOTE"
+
+combinedData <- rbind(
+  subset(nonSMOTEData, select = c(rockfall, method)),
+  subset(plotTrainSMOTE, select = c(rockfall, method))
+)
+
+# Plot with facets
+finalPlot <- ggplot(combinedData, aes(x = "Rockfall", fill = rockfall)) +
+  geom_bar(alpha = 0.8, width = 0.5) +
+  labs(
+    title = "Comparison of Rockfall Distribution: Original vs SMOTE",
+    x = "",
+    y = "Count",
+    fill = "Rockfall Category"
+  ) +
+  scale_fill_manual(
+    values = c("0" = "steelblue", "1" = "red"),
+    labels = c("0" = "Rockfall Not Observed", "1" = "Rockfall Observed")
+  ) +
+  facet_wrap(~method, scales = "free_y") +
+  theme_publish() +
+  theme(
+    axis.text.x = element_blank(),  # Hide x-axis tick labels
+    axis.title.x = element_blank(),  # X-axis title size
+    axis.title.y = element_text(size = 16),  # Y-axis title size
+    plot.title = element_text(size = 18, face = "bold", hjust = 0.5),  # Title size
+    legend.text = element_text(size = 14),  # Legend text size
+    legend.title = element_blank()  # Legend title size
+  )
+
+# Save the final plot
+ggsave(file = here("figures/m8SMOTEvsNonSMOTEValRockfalls.svg"), plot = finalPlot, height = 5, width = 7)
+
+
+
+count <- combinedData %>%
+  group_by(method, rockfall) %>%
+  summarise(count = n(), .groups = "drop")
+
+
+count
+```
+
+```{r lasso logistic regression}
+
+
+#https://www.sthda.com/english/articles/36-classification-methods-essentials/149-penalized-logistic-regression-essentials-in-r-ridge-lasso-and-elastic-net/
+set.seed(123)  # For reproducibility
+cv.lasso <- cv.glmnet(xSMOTE, ySMOTE, alpha = 1, family = "binomial")
+M8smoteLasso <- plot(cv.lasso) #show lamda plot
+ggsave(file = here("figures/m8SMOTELasso.png"), plot = M8smoteLasso, height = 5, width = 7)
+ #save lamda plot
+cv.lasso$lambda.min #show exact value of lambda
+cv.lasso$lambda.1se #value of lambda within 1 standard error, optimizes accuracy and simplicity
+coef(cv.lasso, cv.lasso$lambda.min) #coefficients for perfectly accurate model
+coef(cv.lasso, cv.lasso$lambda.1se) #more simplified model with less accuracy, but suggest variables are more important
+
+minLambda_nonzero <- which(coef(cv.lasso, cv.lasso$lambda.min) != 0)  # Indices of non-zero coefficients
+minLambdaNames <- (rownames(coef(cv.lasso, cv.lasso$lambda.min))[minLambda_nonzero])
+minLambdaNames <- minLambdaNames[minLambdaNames != "(Intercept)"]  # Exclude the intercept
+
+
+oneSELambda_nonzero <- which(coef(cv.lasso, cv.lasso$lambda.1se) != 0)  # Indices of non-zero coefficients
+oneSELambdaNames <- (rownames(coef(cv.lasso, cv.lasso$lambda.1se))[oneSELambda_nonzero])
+oneSELambdaNames <- oneSELambdaNames[oneSELambdaNames != "(Intercept)"]  # Exclude the intercept
+
+
+
+
+#use this to test variables from lambda min vs lambda 1se
+
+# # Create models for testing
+# # Model using lambda.min
+# model_min <- glmnet(xSMOTE, ySMOTE, alpha = 1, lambda = cv.lasso$lambda.min, family = "binomial")
+# 
+# # Model using lambda.1se
+# model_1se <- glmnet(xSMOTE, ySMOTE, alpha = 1, lambda = cv.lasso$lambda.1se, family = "binomial")
+# 
+# # Prepare test set for evaluation
+# x_test <- as.matrix(subset(test, select = -rockfall))  # Features in test set
+# y_test <- as.factor(test$rockfall)  # True labels in test set
+# 
+# # Predict probabilities and classes for testing data
+# # Assuming `x_test` and `y_test` are your test feature matrix and response vector
+# pred_min <- predict(model_min, newx = x_test, type = "response")
+# class_min <- ifelse(pred_min > 0.5, 1, 0)
+# 
+# pred_1se <- predict(model_1se, newx = x_test, type = "response")
+# class_1se <- ifelse(pred_1se > 0.5, 1, 0)
+# 
+# # Evaluate the models
+# cat("\nModel evaluation (lambda.min):\n")
+# confusion_matrix_min <- table(Predicted = class_min, Actual = y_test)
+# print(confusion_matrix_min)
+# 
+# cat("\nModel evaluation (lambda.1se):\n")
+# confusion_matrix_1se <- table(Predicted = class_1se, Actual = y_test)
+# print(confusion_matrix_1se)
+# 
+# # Evaluate the models
+# cat("\nModel evaluation (lambda.min):\n")
+# confusion_matrix_min <- table(Predicted = class_min, Actual = y_test)
+# print(confusion_matrix_min)
+# 
+# accuracy_min <- sum(diag(confusion_matrix_min)) / sum(confusion_matrix_min)
+# cat("Accuracy (lambda.min): ", accuracy_min, "\n")
+# 
+# cat("\nModel evaluation (lambda.1se):\n")
+# confusion_matrix_1se <- table(Predicted = class_1se, Actual = y_test)
+# print(confusion_matrix_1se)
+# 
+# accuracy_1se <- sum(diag(confusion_matrix_1se)) / sum(confusion_matrix_1se)
+# cat("Accuracy (lambda.1se): ", accuracy_1se, "\n")
+
+#modify training data to for best variable choice
+xSMOTE_filtered <- as.data.frame(xSMOTE[, colnames(xSMOTE) %in% minLambdaNames])
+x_test_filtered <- as.data.frame(x_test[, colnames(x_test) %in% minLambdaNames])
+
+
+
+
+```
+
+
+```{r create tasks}
+
+#create a task
+
+xSMOTE_filtered$rockfall <- ySMOTE
+xySMOTE_filtered <- xSMOTE_filtered
+
+x_test_filtered$rockfall <- y_test
+xy_test_filtered <- x_test_filtered
+xy_test_filtered$rockfall <- as.factor(xy_test_filtered$rockfall)
+
+traintask <- as_task_classif(id = "training" ,x = xySMOTE_filtered, target = "rockfall", positive = "1" )
+testtask <- as_task_classif(id = "test", x = xy_test_filtered, target = "rockfall", positive = "1")
+
+
+xSMOTE_filtered$rockfall <- ySMOTE
+xySMOTE_filtered <- xSMOTE_filtered
+
+x_test_filtered$rockfall <- y_test
+xy_test_filtered <- x_test_filtered
+xy_test_filtered$rockfall <- as.factor(xy_test_filtered$rockfall)
+
+traintask <- as_task_classif(id = "training" ,x = xySMOTE_filtered, target = "rockfall", positive = "1" )
+testtask <- as_task_classif(id = "test", x = xy_test_filtered, target = "rockfall", positive = "1")
+
+
+```
+
+
+```{r random forest}
+
+#create learner instance
+learnerRF <- lrn("classif.ranger", num.trees = to_tune(10,1000), mtry = to_tune(1,6), max.depth = to_tune(1,100))
+learnerRF$predict_type <- "prob"
+
+#create tuner instance
+tuner <- tnr("grid_search", batch_size = 11)
+
+
+#tune learner with tuner 
+tuneRF <- mlr3tuning::tune(task = traintask, tuner = tuner, learner = learnerRF, resampling = rsmp("cv", folds = 10), measures = msr("classif.fbeta")) 
+
+autoplot(tuneRF, type = "performance")
+
+tuneRF$result
+
+
+learnerRF_tuned = lrn("classif.ranger")
+learnerRF_tuned$param_set$values = tuneRF$result_learner_param_vals
+
+learnerRF_tuned$predict_type <- "prob"
+
+
+# Predict on the test data
+learnerRF_tuned$train(traintask)$model
+
+prediction <- learnerRF_tuned$predict(testtask)
+
+prediction$confusion
+
+auc <- prediction$score(msr("classif.auc"))
+
+# Plot ROC with AUC value
+roc_plot <- autoplot(prediction, type = "roc") +
+  labs(
+    title = "ROC Curve with AUC",
+    x = "False Positive Rate (FPR)",
+    y = "True Positive Rate (TPR)"
+  ) +
+  annotate(
+    "text",
+    x = 0.8, y = 0.2,  # Position for the text annotation
+    label = paste("AUC =", round(auc, 3)),
+    size = 5,
+    color = "blue"
+  ) +
+  labs(title = "Random Forest ROC Curve with AUC on \nMine 8 Data") +
+  theme_publish()
+
+
+roc_plot
+
+ggsave(file = here("figures/m8SMOTEROCAUCPlotRF.svg"), plot = roc_plot, height = 5, width = 7)
+
+
+autoplot(prediction, type = "prc")
+autoplot(prediction, type = "threshold")
+
+# View predictions
+print(prediction$response)  # Predicted classes
+print(prediction$prob)      # Predicted probabilities
+
+# Evaluate performance
+accuracy <- prediction$score(msr("classif.acc"))
+print(accuracy)
+
+
+# Extract predictions (class and probabilities)
+predicted_classes <- prediction$response  # Predicted classes
+predicted_probabilities <- prediction$prob[, 2]  # Probability of the positive class (rockfall = 1)
+
+test_with_predictions <- test %>%
+  mutate(# Use the 'rockfall' column for actual values
+    RFPredictedClass = as.numeric(predicted_classes)
+  )
+
+```
+
+
+
+```{r support vector machine}
+
+# hyper parameters: C (regularization parameter) and gamma (kernel coefficient)
+learnerSVM <- lrn("classif.svm", kernel = ("radial"), type = "C-classification" , gamma = to_tune(0.1,100), cost = to_tune(0.1,1000))
+learnerSVM$predict_type <- "prob"
+
+
+tuner <- tnr("grid_search", batch_size = 11)
+
+tuneSVM <- mlr3tuning::tune(task = traintask, tuner = tuner, learner = learnerSVM, resampling = rsmp("cv", folds = 10), measures = msr("classif.fbeta")) 
+
+
+tuneSVM$result #best hyper parameters
+
+#test best hyperparameters below
+
+learnerSVM_tuned = lrn("classif.svm")
+learnerSVM_tuned$param_set$values = tuneSVM$result_learner_param_vals
+learnerSVM_tuned$predict_type <- "prob"
+
+
+learnerSVM_tuned$train(traintask)$model
+
+
+# Predict on the test data
+prediction <- learnerSVM_tuned$predict(testtask)
+
+# View predictions
+print(prediction$response)  # Predicted classes
+print(prediction$prob)      # Predicted probabilities
+
+# Evaluate performance
+accuracy <- prediction$score(msr("classif.acc"))
+print(accuracy)
+
+
+
+
+auc <- prediction$score(msr("classif.auc"))
+
+# Plot ROC with AUC value
+roc_plot <- autoplot(prediction, type = "roc") +
+  labs(
+    title = "ROC Curve with AUC",
+    x = "False Positive Rate (FPR)",
+    y = "True Positive Rate (TPR)"
+  ) +
+  annotate(
+    "text",
+    x = 0.8, y = 0.2,  # Position for the text annotation
+    label = paste("AUC =", round(auc, 3)),
+    size = 5,
+    color = "blue"
+  ) +
+  labs(title = "Support Vector Machine ROC Curve with AUC on \nMine 8 Data") +
+  theme_publish()
+
+
+roc_plot
+
+ggsave(file = here("figures/m8SMOTEROCAUCPlotSVM.svg"), plot = roc_plot, height = 5, width = 7)
+
+
+
+autoplot(prediction, type = "prc")
+autoplot(prediction, type = "threshold")
+
+predicted_classes <- prediction$response  # Predicted classes
+
+
+test_with_predictions <- test_with_predictions %>%
+  mutate(# Use the 'rockfall' column for actual values
+    SVMPredictedClass = as.numeric(predicted_classes)
+  )
+
+```
+
+
+```{r logit}
+
+learnerLOG <- lrn("classif.log_reg")
+learnerLOG$predict_type <- "prob"
+
+
+learnerLOG$train(traintask)$model
+
+
+# Predict on the test data
+prediction <- learnerLOG$predict(testtask)
+
+prediction$confusion
+
+
+
+auc <- prediction$score(msr("classif.auc"))
+
+# Plot ROC with AUC value
+roc_plot <- autoplot(prediction, type = "roc") +
+  labs(
+    title = "ROC Curve with AUC",
+    x = "False Positive Rate (FPR)",
+    y = "True Positive Rate (TPR)"
+  ) +
+  annotate(
+    "text",
+    x = 0.8, y = 0.2,  # Position for the text annotation
+    label = paste("AUC =", round(auc, 3)),
+    size = 5,
+    color = "blue"
+  ) +
+  labs(title = "Logistic Regression ROC Curve with AUC on \nMine 8 Data") +
+  theme_publish()
+
+
+roc_plot
+
+ggsave(file = here("figures/m8SMOTEROCAUCPlotLOG.svg"), plot = roc_plot, height = 5, width = 7)
+
+autoplot(prediction, type = "prc")
+autoplot(prediction, type = "threshold")
+
+
+# View predictions
+print(prediction$response)  # Predicted classes
+print(prediction$prob)      # Predicted probabilities
+
+# Evaluate performance
+accuracy <- prediction$score(msr("classif.acc"))
+print(accuracy)
+
+predicted_classes <- prediction$response  # Predicted classes
+
+
+test_with_predictions <- test_with_predictions %>%
+  mutate(# Use the 'rockfall' column for actual values
+    LOGPredictedClass = as.numeric(predicted_classes)
+  )
+
+
+```
+
+
+```{r plot predictions as a time series of binary initiations}
+
+
+# Combine the test data with predictions and actual values
+test_with_predictions<- subset(test_with_predictions, select = c(datetime, rockfall, RFPredictedClass, SVMPredictedClass, LOGPredictedClass)) 
+
+predictionsForPlot <- test_with_predictions |> 
+  mutate(RFPredictedClass = ifelse(RFPredictedClass == 2,1,0), SVMPredictedClass = ifelse(SVMPredictedClass == 2,1,0), LOGPredictedClass = ifelse(LOGPredictedClass == 2,1,0))
+
+
+#create daily count
+rockfallsDailyCount <- predictionsForPlot |>
+  mutate(datetime = as.Date(as.POSIXct(datetime)), rockfall = as.numeric(rockfall)) |>  # Extract date from datetime
+  group_by(datetime) |>
+  summarize(rockfallDailySum = sum(rockfall), 
+            predictedRFDailySum = sum(RFPredictedClass),
+            predictedSVMDailySum = sum(SVMPredictedClass),
+            predictedLOGDailySum = sum(LOGPredictedClass)
+            )
+
+
+PredictionTSComp <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(datetime))) + 
+  geom_line(aes(y = rockfallDailySum, color = "Actual Data"), size = 1) +
+  geom_line(aes(y = predictedRFDailySum, color = "Random Forest Prediction"), size = 1, alpha = 0.25) +
+  geom_line(aes(y = predictedSVMDailySum, color = "Support Vector Machine Prediction"), size = 1, alpha = 0.25) +
+  geom_line(aes(y = predictedLOGDailySum, color = "Logistic Regression Prediction"), size = 1, alpha = 0.25) +
+  labs(
+    title = 'Mine 8: Rockfall Initiation Hours',
+    y = 'Count of Rockfall Initiation Hours',
+    color = "Legend"
+  ) + 
+  scale_color_manual(values = c("Actual Data" = "red", "Random Forest Prediction" = "blue", 
+                                "Support Vector Machine Prediction" = "green", "Logistic Regression Prediction" = "grey")) +
+  scale_x_datetime(expand = c(0, 0)) +
+  theme_bw() + 
+  theme(
+    axis.title.x = element_blank(), 
+    axis.text.y = element_text(size = 14), 
+    axis.title.y = element_text(size = 14), 
+    axis.text.x = element_text(size = 14), 
+    plot.title = element_text(size = 18),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    legend.position = "right"  # Position the legend at the top
+  )
+
+
+ggsave(file = here("figures/PredictionTSComp.svg"), plot = PredictionTSComp, height = 6, width = 12)
+
+
+
+# Calculate the 7-day rolling sum for each prediction
+rockfallsDailyCount <- rockfallsDailyCount %>%
+  mutate(
+    rollingRockfallSum = rollapply(rockfallDailySum, width = 7, FUN = sum, align = "right", fill = NA),
+    rollingRFPredictedSum = rollapply(predictedRFDailySum, width = 7, FUN = sum, align = "right", fill = NA),
+    rollingSVMPredictedSum = rollapply(predictedSVMDailySum, width = 7, FUN = sum, align = "right", fill = NA),
+    rollingLOGPredictedSum = rollapply(predictedLOGDailySum, width = 7, FUN = sum, align = "right", fill = NA))
+
+# Create the plot with rolling sums
+PredictionTSCompRolling <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(datetime))) + 
+  geom_line(aes(y = rollingRockfallSum, color = "Actual Data (7-day rolling)"), size = 1) +
+  geom_line(aes(y = rollingRFPredictedSum, color = "Random Forest Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
+  geom_line(aes(y = rollingSVMPredictedSum, color = "Support Vector Machine Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
+  geom_line(aes(y = rollingLOGPredictedSum, color = "Logistic Regression Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
+  labs(
+    title = 'Mine 8: Rockfall Initiation Hours (7-day Rolling Sum)',
+    y = 'Rolling Sum of Rockfall Initiation Hours',
+    color = "Legend"
+  ) + 
+  scale_color_manual(values = c("Actual Data (7-day rolling)" = "red", 
+                                "Random Forest Prediction (7-day rolling)" = "blue", 
+                                "Support Vector Machine Prediction (7-day rolling)" = "green", 
+                                "Logistic Regression Prediction (7-day rolling)" = "grey")) +
+  scale_x_datetime(expand = c(0, 0)) +
+  theme_bw() + 
+  theme(
+    axis.title.x = element_blank(), 
+    axis.text.y = element_text(size = 14), 
+    axis.title.y = element_text(size = 14), 
+    axis.text.x = element_text(size = 14), 
+    plot.title = element_text(size = 18),
+    legend.title = element_text(size = 14),
+    legend.text = element_text(size = 12),
+    legend.position = "right"  # Position the legend at the top
+  )
+
+# Display the plot
+PredictionTSCompRolling
+
+ggsave(file = here("figures/PredictionTSCompRolling.svg"), plot = PredictionTSCompRolling, height = 6, width = 12)
+
+
+```
