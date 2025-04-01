@@ -9,13 +9,15 @@ knitr::opts_chunk$set(echo = FALSE) #for all chunks we dont want to see code in 
 ```
 
 
-```{r imports}
+```{r imports} 
+#updated 4/1
 
 if (!require("pacman")) 
-  install.packages("pacman")
+  install.packages("pacman") #this basically makes it so we dont have to do library(package) for each package, and also automatically downloads the packages if you dont already have them downloaded from CRAN (Comprehensive R Archive Network)
 
 pacman::p_load(
   here, #import data
+  janitor, #cleaning header names into R readable headers if not readable already
   tidyverse, #ggplot, dplyr, readr etc.
   datawizard, #joining all the weather in one line of code
   timetk, #for condensing time periods for rainfall
@@ -28,16 +30,19 @@ pacman::p_load(
 
 ```{r read in data}
 
-valData <- read_csv(here("rockfall_mine8_min_binary_validated.csv"))
+valData <- read_csv(here("rockfall_mine7_min_binary_validated.csv"))
 valData <- data.frame("date" = valData$Date, "timeOfInitiation" = valData$`Time of Initiation`) #re-format a bit
 
 #MINE8
-jun <- read_csv(here('jun2022.csv'))
-july <- read_csv(here('july2022.csv'))
-aug <- read_csv('aug2022.csv')
-sept <- read_csv('sept2022.csv')
-morenci <- read_csv('morenciWeather2022.csv')
-morenci <- morenci[c(1:24190),]
+jan <- read_csv(here('data/jan2022.csv'))
+feb <- read_csv(here('data/feb2022.csv'))
+mar <- read_csv('data/mar2022.csv') 
+apr <- read_csv('data/apr2022.csv')
+teck <- read_csv('data/teckWeather.csv')
+colnames(teck) <- teck[2,]
+teck <-(teck[c(636:2483),])
+teck <- clean_names(teck)
+noView <- read_csv(here("data/timesUnavailable.csv"))
 ```
 
 
