@@ -10,7 +10,6 @@ knitr::opts_chunk$set(echo = FALSE) #for all chunks we dont want to see code in 
 
 
 ```{r imports} 
-#updated 4/1
 
 if (!require("pacman")) 
   install.packages("pacman") #this basically makes it so we dont have to do library(package) for each package, and also automatically downloads the packages if you dont already have them downloaded from CRAN (Comprehensive R Archive Network)
@@ -29,7 +28,6 @@ pacman::p_load(
 ```
 
 ```{r read in data}
-#updated 4/1
 
 #valData <- read_csv(here("rockfall_mine7_min_binary_validated.csv")) #add once we have the data
 #valData <- data.frame("date" = valData$Date, "timeOfInitiation" = valData$`Time of Initiation`) #re-format a bit
