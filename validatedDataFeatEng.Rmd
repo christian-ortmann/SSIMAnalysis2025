@@ -1,7 +1,7 @@
 ---
 title: "validatedDataFeatEng"
 output: html_document
-date: "2025-01-03"
+date: "2025-04-01"
 ---
 
 ```{r setup, include=FALSE}
@@ -33,8 +33,8 @@ remotes::install_github("pnnl/Smisc") #for time integration of solar irradiance 
 ```{r read data}
 #add in the above {r = read data} echo=FALSE if we want to hide the code that generates a plot (though there are no plots in this chunk, just an aside...)
 
-m8cont <- readRDS(here("mine8FinalDataValidated.rds")) 
-head(m8cont)
+m7cont <- readRDS(here("mine7FinalDataValidated.rds")) 
+head(m7cont)
 
 
 ```
@@ -43,23 +43,23 @@ head(m8cont)
 ```{r generate features}
 
 #------------------------
-#KW/H #integrate irradiance over time
+#solar insolation
 #------------------------
 
 
-m8cont$irradiance[m8cont$irradiance == 0] <- 1e-10  # Replace zeros with a small value, fix for the timeIntegration function
+m7cont$irradiance[m7cont$irradiance == 0] <- 1e-10  # Replace zeros with a small value, fix for the timeIntegration function
 
 # Create a vector to store results
-solar_insolation <- numeric(length(m8cont$datetime))
+solar_insolation <- numeric(length(m7cont$datetime))
 
 # Loop through each timestamp
-for (i in seq_along(m8cont$datetime)) {
+for (i in seq_along(m7cont$datetime)) {
   # Define the current timestamp
-  current_time <- m8cont$datetime[i]
+  current_time <- m7cont$datetime[i]
   
   # Filter data for the last 24 hours
-  subset_data <- m8cont[m8cont$datetime >= (current_time - 24*3600) & #find the current time from 24 hours earlier
-                        m8cont$datetime <= current_time, ]
+  subset_data <- m7cont[m7cont$datetime >= (current_time - 24*3600) & #find the current time from 24 hours earlier
+                        m7cont$datetime <= current_time, ]
   
   # Perform time integration if there is enough data
   if (nrow(subset_data) > 1) {
@@ -78,7 +78,7 @@ for (i in seq_along(m8cont$datetime)) {
 
 # wh/m^2 convert to kWh m/^2
 
-m8cont$solarInsol24 <- solar_insolation
+m7cont$solarInsol24 <- solar_insolation
 
 
 #------------------------
@@ -86,7 +86,7 @@ m8cont$solarInsol24 <- solar_insolation
 #------------------------
 
 #insolation
-i8 <- ggplot(m8cont) + 
+i7 <- ggplot(m7cont) + 
   geom_line(aes(as.POSIXct(datetime), solarInsol24), color = 'brown3') + 
   labs(x = '',
        y = bquote('Solar Insolation ' (kWh/m^2)), 
@@ -94,42 +94,81 @@ i8 <- ggplot(m8cont) +
   scale_y_continuous(expand = c(0, 0))+ 
   scale_x_datetime(expand = c(0, 0)) +
   theme_publish()
-i8
+i7
 
-ggsave(file = here("figures/m8insolation.svg"), plot = i8, height = 5, width = 7)
+ggsave(file = here("figures/m7insolation.svg"), plot = i7, height = 5, width = 7)
 
 #------------------------
 #rolling sums of rain
 #------------------------
-m8cont <- m8cont |> 
+m7cont <- m7cont |> 
   mutate(
     'sumrain24'= rollapply(rainmm, width = 24, FUN = sum, fill = 0, align = 'left', partial = TRUE), 
     'sumrain6'= rollapply(rainmm, width = 6, FUN = sum, fill = 0, align = 'left', partial = TRUE)
     )
 
-m8cont <- m8cont |>
+m7cont <- m7cont |>
   mutate(datetime = as.integer(datetime))
+
+
+
+#------------------------
+#freezing potential
+#------------------------
+
+
+
+calculate_FP <- function(tempC, time) {
+  freezing_point <- 0 # Freezing point of water in Celsius
+  
+  # Initialize FP vector
+  FP <- numeric(length(tempC))
+  
+  # Loop through each time step starting from the second element
+  for (i in 2:length(tempC)) {
+    # Calculate the difference in temperature from freezing point
+    temp_diff <- freezing_point - tempC[i]
+    
+    # Calculate the time interval
+    time_interval <- time[i] - time[i - 1]
+    
+    # Calculate the freezing potential for the current interval
+    interval_FP <- temp_diff * time_interval
+    
+    # Apply the condition based on the interval freezing potential
+    if (interval_FP < 0) {
+      interval_FP <- 0
+    }
+    
+    # Store the interval freezing potential
+    FP[i] <- interval_FP
+  }
+  
+  return(FP)
+}
+
+mine7cont$FP <- calculate_FP(mine7cont$tempC, mine7cont$time)
 
 ```
 
 ```{r standardize data for lasso logit}
 
-noTime <- subset(m8cont, select = -c(datetime, rockfall))
+noTime <- subset(mcont, select = -c(datetime, rockfall))
 
-m8contStd <- as.data.frame(scale(noTime, center=TRUE, scale=TRUE)) #standardize data
+m7contStd <- as.data.frame(scale(noTime, center=TRUE, scale=TRUE)) #standardize data
 
 #add standardize data back
-m8contStd$datetime <- m8cont$datetime
-m8contStd$rockfall <- m8cont$rockfall
+m7contStd$datetime <- m7cont$datetime
+m7contStd$rockfall <- m7cont$rockfall
 
 
 ```
 
 ```{r save dataset}
 
-saveRDS(m8cont, here("mine8DataForML.rds"))
+saveRDS(m7cont, here("mine7DataForML.rds"))
 
-saveRDS(m8contStd, here("mine8StandardizedDataForML.rds"))
+saveRDS(m7contStd, here("mine7StandardizedDataForML.rds"))
 
 
 ```
@@ -141,7 +180,7 @@ saveRDS(m8contStd, here("mine8StandardizedDataForML.rds"))
 
 
 # Create daily count and unique hour count
-rockfallsDailyCount <- M8Rockfalls |>
+rockfallsDailyCount <- M7Rockfalls |>
   mutate(rockfall = 1, 
          date = as_date(datetime), 
          hour = hour(datetime)) |>
@@ -154,7 +193,7 @@ rockfallsDailyCount <- M8Rockfalls |>
   mutate(cumuRockfall = cumsum(rockfall))
 
 # Plot daily rockfall with unique hour count
-RF8 <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(avg_time))) + 
+RF7 <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(avg_time))) + 
   geom_point(aes(y = rockfall, color = "Discrete Rockfalls")) +
   geom_line(aes(y = rockfall, color = "Discrete Rockfalls")) +
   geom_point(aes(y = unique_hours, color = "Rockfall Hours")) +
@@ -179,26 +218,26 @@ RF8 <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(avg_time))) +
     legend.title = element_blank()
   )
 
-RF8
+RF7
 
 
-ggsave(here("figures/mine8RockfallValidatedTimeSeries.png"), plot=RF8, width=7, height=5)
+ggsave(here("figures/mine7RockfallValidatedTimeSeries.png"), plot=RF7, width=7, height=5)
 
 
 
 
 
 #-----------------------
-m8cont$datetime <- as.POSIXct(m8cont$datetime, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
-max_irradiance <- max(m8cont$irradiance, na.rm = TRUE)
-max_solarInsol <- max(m8cont$solarInsol24, na.rm = TRUE)
+m7cont$datetime <- as.POSIXct(m7cont$datetime, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+max_irradiance <- max(m7cont$irradiance, na.rm = TRUE)
+max_solarInsol <- max(m7cont$solarInsol24, na.rm = TRUE)
 
 
-max_rainmm <- max(m8cont$rainmm, na.rm = TRUE)
-max_intensity <- max(m8cont$intensity, na.rm = TRUE)
+max_rainmm <- max(m7cont$rainmm, na.rm = TRUE)
+max_intensity <- max(m7cont$intensity, na.rm = TRUE)
 
 #temperature
-weatherplot8TempC <- ggplot(m8cont) + 
+weatherplot7TempC <- ggplot(m7cont) + 
   geom_line(aes(datetime, tempC, color = 'Temperature 1hr'), alpha = 0.2) + 
   geom_line(aes(datetime,na.locf(rollapply(tempC, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Temperature 24hr")) + 
   labs(x = '',
@@ -217,17 +256,17 @@ theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
           axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5)
     )
 
-t8 <- weatherplot8TempC
+t8 <- weatherplot7TempC
 t8
 
 #add rockfall
 #-------------------------------------
 # Define scaling factors
-max_temp <- max(m8cont$tempC, na.rm = TRUE)  # Max temperature
+max_temp <- max(m7cont$tempC, na.rm = TRUE)  # Max temperature
 max_rockfalls <- 40  # Set max rockfall count to 40
 
 # Create the combined plot
-t8_combined <- ggplot(m8cont, aes(x = datetime)) + 
+t7_combined <- ggplot(m7cont, aes(x = datetime)) + 
   # Temperature plot
   # geom_line(aes(y = tempC, color = "Temperature 1hr"), alpha = 0.2) + 
   geom_line(aes(y = na.locf(rollapply(tempC, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Temperature 24hr")) + 
@@ -256,14 +295,14 @@ t8_combined <- ggplot(m8cont, aes(x = datetime)) +
         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
 
 # Display the updated plot
-t8_combined
+t7_combined
 
 
 #--------------------------
 
 
 #precipitation
-weatherplot8Precip <- ggplot(m8cont) + 
+weatherplot7Precip <- ggplot(m7cont) + 
   geom_line(aes(datetime, rainmm, color = 'Rainfall 1hr')) + 
   geom_line(aes(datetime, scales::rescale(intensity, to = c(0, max_rainmm)), color = "Rainfall Intensity")) + 
   labs(x = '',
@@ -284,19 +323,19 @@ theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
 
 
 
-p8 <- weatherplot8Precip
-p8
+p7 <- weatherplot7Precip
+p7
 
 
 
 #add rockfall for precip intensity
 #-------------------------------------
 # Define scaling factors
-max_inten <- max(m8cont$intensity, na.rm = TRUE)  # Max temperature
+max_inten <- max(m7cont$intensity, na.rm = TRUE)  # Max temperature
 max_rockfalls <- 40  # Set max rockfall count to 40
 
 # Create the combined plot
-pi8_combined <- ggplot(m8cont, aes(x = datetime)) + 
+pi7_combined <- ggplot(m7cont, aes(x = datetime)) + 
   # Temperature plot
   geom_line(aes(y = intensity, color = "Precipitation Intensity")) + 
   # Rockfall data scaled to match temperature range
@@ -324,7 +363,7 @@ pi8_combined <- ggplot(m8cont, aes(x = datetime)) +
         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
 
 # Display the updated plot
-pi8_combined
+pi7_combined
 
 
 #--------------------------
@@ -334,11 +373,11 @@ pi8_combined
 #add rockfall for precip 
 #-------------------------------------
 # Define scaling factors
-max_precip <- max(m8cont$rainmm, na.rm = TRUE)  # Max temperature
+max_precip <- max(m7cont$rainmm, na.rm = TRUE)  # Max temperature
 max_rockfalls <- 40  # Set max rockfall count to 40
 
 # Create the combined plot
-p8_combined <- ggplot(m8cont, aes(x = datetime)) + 
+p7_combined <- ggplot(m7cont, aes(x = datetime)) + 
   # Temperature plot
   geom_line(aes(y = rainmm, color = "Precipitation 1hr")) + 
   # Rockfall data scaled to match temperature range
@@ -366,14 +405,14 @@ p8_combined <- ggplot(m8cont, aes(x = datetime)) +
         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
 
 # Display the updated plot
-p8_combined
+p7_combined
 
 
 #--------------------------
 
 
 #irradiance
-weatherplot8Irr <- ggplot(m8cont) + 
+weatherplot7Irr <- ggplot(m7cont) + 
   geom_line(aes(datetime, irradiance, color = 'Irradiance 1hr'), alpha = 0.2) +
   geom_line(aes(datetime, na.locf(rollapply(irradiance, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Irradiance 24hr")) + 
   geom_line(aes(datetime, scales::rescale(solarInsol24, to = c(0, max_irradiance)), color = 'Solar Insolation 24hr')) + 
@@ -395,8 +434,8 @@ theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
     )
 
 
-i8 <- weatherplot8Irr
-i8
+i7 <- weatherplot7Irr
+i7
 
 
 #add rockfall for irradiance
@@ -406,7 +445,7 @@ max_irr <- max(na.locf(rollapply(m8cont$irradiance, width = 24, FUN = mean, fill
 max_rockfalls <- 40  # Set max rockfall count to 40
 
 # Create the combined plot
-irr8_combined <- ggplot(m8cont, aes(x = datetime)) + 
+irr7_combined <- ggplot(m8cont, aes(x = datetime)) + 
   # Temperature plot
   geom_line(aes(datetime, na.locf(rollapply(irradiance, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Irradiance 24hr")) + 
   # Rockfall data scaled to match temperature range
@@ -434,7 +473,7 @@ irr8_combined <- ggplot(m8cont, aes(x = datetime)) +
         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
 
 # Display the updated plot
-irr8_combined
+irr7_combined
 
 
 #--------------------------
@@ -444,11 +483,11 @@ irr8_combined
 #add rockfall for solar insolation
 #-------------------------------------
 # Define scaling factors
-max_insol <- max(m8cont$solarInsol24, na.rm = TRUE)  # Max temperature
+max_insol <- max(m7cont$solarInsol24, na.rm = TRUE)  # Max temperature
 max_rockfalls <- 40  # Set max rockfall count to 40
 
 # Create the combined plot
-insol8_combined <- ggplot(m8cont, aes(x = datetime)) + 
+insol7_combined <- ggplot(m8cont, aes(x = datetime)) + 
   # Temperature plot
   geom_line(aes(datetime,solarInsol24, color = 'Solar Insolation 24hr')) +
   # geom_line(aes(datetime, na.locf(rollapply(irradiance, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Irradiance 24hr")) + 
@@ -477,7 +516,7 @@ insol8_combined <- ggplot(m8cont, aes(x = datetime)) +
         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
 
 # Display the updated plot
-insol8_combined
+insol7_combined
 
 
 #--------------------------
@@ -486,7 +525,7 @@ insol8_combined
 
 
 #wind
-weatherplot8Wind <- ggplot(m8cont) + 
+weatherplot7Wind <- ggplot(m7cont) + 
   geom_line(aes(datetime, windMS, color = 'Wind 1hr'), alpha = 0.2) + 
   geom_line(aes(datetime,na.locf(rollapply(windMS, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Wind 24hr")) +
   labs(
@@ -512,18 +551,18 @@ theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
 
 
 
-w8 <- weatherplot8Wind
-w8
+w7 <- weatherplot7Wind
+w7
 
 
 #add rockfall for wind
 #-------------------------------------
 # Define scaling factors
-max_wind <- max(na.locf(rollapply(m8cont$windMS, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)))  # Max temperature
+max_wind <- max(na.locf(rollapply(m7cont$windMS, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)))  # Max temperature
 max_rockfalls <- 40  # Set max rockfall count to 40
 
 # Create the combined plot
-wind8_combined <- ggplot(m8cont, aes(x = datetime)) + 
+wind7_combined <- ggplot(m7cont, aes(x = datetime)) + 
   # Temperature plot
   # geom_line(aes(datetime,windMS, color = 'Wind 1hr')) +
   geom_line(aes(datetime,na.locf(rollapply(windMS, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)),  color = 'Wind 24hr')) +
@@ -553,7 +592,7 @@ wind8_combined <- ggplot(m8cont, aes(x = datetime)) +
         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
 
 # Display the updated plot
-wind8_combined
+wind7_combined
 
 
 #--------------------------
@@ -563,29 +602,29 @@ wind8_combined
 
 
 
-ggsave(file = here("figures/m8temp.svg"), plot = t8, height = 5, width = 7)
-ggsave(file = here("figures/m8precipitation.svg"), plot = p8, height = 5, width = 7)
-ggsave(file = here("figures/m8irradiance.svg"), plot = i8, height = 5, width = 7)
-ggsave(file = here("figures/m8wind.svg"), plot = w8, height = 5, width = 7)
+ggsave(file = here("figures/m7temp.svg"), plot = t7, height = 5, width = 7)
+ggsave(file = here("figures/m7precipitation.svg"), plot = p7, height = 5, width = 7)
+ggsave(file = here("figures/m7irradiance.svg"), plot = i7, height = 5, width = 7)
+ggsave(file = here("figures/m7wind.svg"), plot = w7, height = 5, width = 7)
 
 
-ggsave(file = here("figures/m8tempRockfalls.svg"), plot = t8_combined, height = 5, width = 7)
-ggsave(file = here("figures/m8precipitationRockfalls.svg"), plot = p8_combined, height = 5, width = 7)
-ggsave(file = here("figures/m8precipitationIntensityRockfalls.svg"), plot = pi8_combined, height = 5, width = 7)
-ggsave(file = here("figures/m8irradianceRockfalls.svg"), plot = irr8_combined, height = 5, width = 7)
-ggsave(file = here("figures/m8insolationRockfalls.svg"), plot = insol8_combined, height = 5, width = 7)
-ggsave(file = here("figures/m8windRockfalls.svg"), plot = wind8_combined, height = 5, width = 7)
+ggsave(file = here("figures/m7tempRockfalls.svg"), plot = t7_combined, height = 5, width = 7)
+ggsave(file = here("figures/m7precipitationRockfalls.svg"), plot = p7_combined, height = 5, width = 7)
+ggsave(file = here("figures/m7precipitationIntensityRockfalls.svg"), plot = pi7_combined, height = 5, width = 7)
+ggsave(file = here("figures/m7irradianceRockfalls.svg"), plot = irr7_combined, height = 5, width = 7)
+ggsave(file = here("figures/m7insolationRockfalls.svg"), plot = insol7_combined, height = 5, width = 7)
+ggsave(file = here("figures/m7windRockfalls.svg"), plot = wind7_combined, height = 5, width = 7)
 
 
 
-comb <- (t8_combined + p8_combined) / (pi8_combined + wind8_combined) / (irr8_combined + insol8_combined) + 
+comb <- (t7_combined + p7_combined) / (pi7_combined + wind7_combined) / (irr7_combined + insol7_combined) + 
   plot_layout( guides = 'auto') &  
   theme(
     plot.margin = margin(0, 0, 30, 30)  # Increase space between plots
   )
 comb
 
-ggsave(file = here("figures/m8comb.png"), plot = comb, height = 12, width = 14)
+ggsave(file = here("figures/m7comb.png"), plot = comb, height = 12, width = 14)
 
 
 ```

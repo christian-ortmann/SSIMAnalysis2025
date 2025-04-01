@@ -1,7 +1,7 @@
 ---
 title: "validatedDataModelBuilding"
 output: html_document
-date: "2025-01-06"
+date: "2025-04-01"
 ---
 
 ```{r setup, include=FALSE}
@@ -44,11 +44,11 @@ pacman::p_load(
 ```{r read data}
 #add in the above {r = read data} echo=FALSE if we want to hide the code that generates a plot (though there are no plots in this chunk, just an aside...)
 
-m8Data <- readRDS(here("mine8StandardizedDataForML.rds")) 
-head(m8Data) 
+m7Data <- readRDS(here("mine7StandardizedDataForML.rds")) 
+head(m7Data) 
 
-m8UnStandardData <- readRDS(here("mine8DataForML.rds")) 
-head(m8Data) 
+m7UnStandardData <- readRDS(here("mine7DataForML.rds")) 
+head(m7Data) 
 
 ```
 
@@ -57,23 +57,24 @@ head(m8Data)
 
 
 
-m8WOE <- subset(m8UnStandardData, select = -c(datetime))
+m7WOE <- subset(m7UnStandardData, select = -c(datetime))
 
-m8WOE <- m8WOE |> 
+m7WOE <- m7WOE |> 
   mutate(irradiance = case_when(
     irradiance < 0 ~ 0,
     .default = irradiance))
-df <-m8WOE
+df <-m7WOE
 options(scorecard.bin_close_right = FALSE, scorecard.bin_close_left = FALSE)
 
 breaks_list <- list(intensity = seq(min(df$intensity), max(df$intensity), by = ((max(df$intensity)-min(df$intensity))/5)), 
                     rainmm = seq(min(df$rainmm), max(df$rainmm), by = ((max(df$rainmm)-min(df$rainmm))/5)),
-                    tempC = seq(min(df$tempC), max(df$tempC), by = ((max(df$tempC)-min(df$tempC))/5)), #forces to 5 bins, function doesnt coopoerate so change math
-                    irradiance = seq(min(df$irradiance), max(df$irradiance), by = ((max(df$irradiance)-min(df$irradiance))/5)), #forces to 5 bins, function doesnt coopoerate so change math
+                    tempC = seq(min(df$tempC), max(df$tempC), by = ((max(df$tempC)-min(df$tempC))/5)), 
+                    irradiance = seq(min(df$irradiance), max(df$irradiance), by = ((max(df$irradiance)-min(df$irradiance))/5)),
                     solarInsol24 = seq(min(df$solarInsol24), max(df$solarInsol24), by = ((max(df$solarInsol24)-min(df$solarInsol24))/5)),
-                    windMS = seq(min(df$windMS), max(df$windMS), by = ((max(df$windMS)-min(df$windMS))/5)), #forces to 5 bins, function doesnt coopoerate so change math
+                    windMS = seq(min(df$windMS), max(df$windMS), by = ((max(df$windMS)-min(df$windMS))/5)), 
                     sumrain6 = seq(min(df$sumrain6), max(df$sumrain6), by = ((max(df$sumrain6)-min(df$sumrain6))/5)),
-                    sumrain24 = seq(min(df$sumrain24), max(df$sumrain24), by = ((max(df$sumrain24)-min(df$sumrain24))/5)))
+                    sumrain24 = seq(min(df$sumrain24), max(df$sumrain24), by = ((max(df$sumrain24)-min(df$sumrain24))/5)),
+                    fp = seq(min(df$FP), max(df$FP), by = ((max(df$FP)-min(df$FP))/5)))
 
 woebin_hour <- woebin(df, 
                       y = 'rockfall', 
@@ -94,9 +95,9 @@ data_hour_woe <- woebin_ply(df, woebin_hour)
 #since we use cross validation we dont need validation dataset
 
 set.seed(123)  # For reproducibility
-m8Data$id <- 1:nrow(m8Data)# Create ID column
-train <- m8Data |> sample_frac(0.80)  # 80% training data
-test <- anti_join(m8Data, train, by = "id")  # Remaining 20% data
+m7Data$id <- 1:nrow(m7Data)# Create ID column
+train <- m7Data |> sample_frac(0.80)  # 80% training data
+test <- anti_join(m7Data, train, by = "id")  # Remaining 20% data
 
 test <- subset(test, select = -c(id)) # Drop unnecessary columns
 x_test <- subset(test, select = -c(rockfall)) #everything except rockfall
@@ -110,7 +111,7 @@ y_test <- as.factor((test$rockfall))#just rockfall
 # Ensure rockfall is treated as a factor
 train$rockfall <- as.factor(train$rockfall)
 
-m8ValBar <- ggplot(train, aes(x = "Rockfall", fill = rockfall)) +
+m7ValBar <- ggplot(train, aes(x = "Rockfall", fill = rockfall)) +
   geom_bar(alpha = 0.8, width = 0.5) +
   labs(
     title = "Distribution of Rockfall Validated Data",
@@ -132,7 +133,7 @@ m8ValBar <- ggplot(train, aes(x = "Rockfall", fill = rockfall)) +
     legend.title = element_blank()  # Legend title size
   )
 
-ggsave(file = here("figures/m8ValRockfalls.svg"), plot = m8ValBar, height = 5, width = 7)
+ggsave(file = here("figures/m7ValRockfalls.svg"), plot = m7ValBar, height = 5, width = 7)
 
 count <- train %>%
   group_by(rockfall) %>%
@@ -155,7 +156,7 @@ plotTrainSMOTE <- as.data.frame(xSMOTE)  # Convert matrix to data frame
 plotTrainSMOTE$rockfall <- ySMOTE 
 
 
-m8SMOTEValRockfalls <- ggplot(plotTrainSMOTE, aes(x = "Rockfall", fill = rockfall)) +
+m7SMOTEValRockfalls <- ggplot(plotTrainSMOTE, aes(x = "Rockfall", fill = rockfall)) +
   geom_bar(alpha = 0.8, width = 0.5) +
   labs(
     title = "Distribution of Rockfall Validated Data \nResampled with SMOTE",
@@ -178,7 +179,7 @@ m8SMOTEValRockfalls <- ggplot(plotTrainSMOTE, aes(x = "Rockfall", fill = rockfal
   )
 
 
-ggsave(file = here("figures/m8SMOTEValRockfalls.svg"), plot = m8SMOTEValRockfalls, height = 5, width = 7)
+ggsave(file = here("figures/m7SMOTEValRockfalls.svg"), plot = m7SMOTEValRockfalls, height = 5, width = 7)
 
 
 # Combine data for non-SMOTE and SMOTE
@@ -216,7 +217,7 @@ finalPlot <- ggplot(combinedData, aes(x = "Rockfall", fill = rockfall)) +
   )
 
 # Save the final plot
-ggsave(file = here("figures/m8SMOTEvsNonSMOTEValRockfalls.svg"), plot = finalPlot, height = 5, width = 7)
+ggsave(file = here("figures/m7SMOTEvsNonSMOTEValRockfalls.svg"), plot = finalPlot, height = 5, width = 7)
 
 
 
@@ -234,8 +235,8 @@ count
 #https://www.sthda.com/english/articles/36-classification-methods-essentials/149-penalized-logistic-regression-essentials-in-r-ridge-lasso-and-elastic-net/
 set.seed(123)  # For reproducibility
 cv.lasso <- cv.glmnet(xSMOTE, ySMOTE, alpha = 1, family = "binomial")
-M8smoteLasso <- plot(cv.lasso) #show lamda plot
-ggsave(file = here("figures/m8SMOTELasso.png"), plot = M8smoteLasso, height = 5, width = 7)
+M7smoteLasso <- plot(cv.lasso) #show lamda plot
+ggsave(file = here("figures/m7SMOTELasso.png"), plot = M7smoteLasso, height = 5, width = 7)
  #save lamda plot
 cv.lasso$lambda.min #show exact value of lambda
 cv.lasso$lambda.1se #value of lambda within 1 standard error, optimizes accuracy and simplicity
@@ -385,13 +386,13 @@ roc_plot <- autoplot(prediction, type = "roc") +
     size = 5,
     color = "blue"
   ) +
-  labs(title = "Random Forest ROC Curve with AUC on \nMine 8 Data") +
+  labs(title = "Random Forest ROC Curve with AUC on \nMine 7 Data") +
   theme_publish()
 
 
 roc_plot
 
-ggsave(file = here("figures/m8SMOTEROCAUCPlotRF.svg"), plot = roc_plot, height = 5, width = 7)
+ggsave(file = here("figures/m7SMOTEROCAUCPlotRF.svg"), plot = roc_plot, height = 5, width = 7)
 
 
 autoplot(prediction, type = "prc")
@@ -473,13 +474,13 @@ roc_plot <- autoplot(prediction, type = "roc") +
     size = 5,
     color = "blue"
   ) +
-  labs(title = "Support Vector Machine ROC Curve with AUC on \nMine 8 Data") +
+  labs(title = "Support Vector Machine ROC Curve with AUC on \nMine 7 Data") +
   theme_publish()
 
 
 roc_plot
 
-ggsave(file = here("figures/m8SMOTEROCAUCPlotSVM.svg"), plot = roc_plot, height = 5, width = 7)
+ggsave(file = here("figures/m7SMOTEROCAUCPlotSVM.svg"), plot = roc_plot, height = 5, width = 7)
 
 
 
@@ -529,13 +530,13 @@ roc_plot <- autoplot(prediction, type = "roc") +
     size = 5,
     color = "blue"
   ) +
-  labs(title = "Logistic Regression ROC Curve with AUC on \nMine 8 Data") +
+  labs(title = "Logistic Regression ROC Curve with AUC on \nMine 7 Data") +
   theme_publish()
 
 
 roc_plot
 
-ggsave(file = here("figures/m8SMOTEROCAUCPlotLOG.svg"), plot = roc_plot, height = 5, width = 7)
+ggsave(file = here("figures/m7SMOTEROCAUCPlotLOG.svg"), plot = roc_plot, height = 5, width = 7)
 
 autoplot(prediction, type = "prc")
 autoplot(prediction, type = "threshold")
@@ -563,95 +564,97 @@ test_with_predictions <- test_with_predictions %>%
 
 ```{r plot predictions as a time series of binary initiations}
 
-
-# Combine the test data with predictions and actual values
-test_with_predictions<- subset(test_with_predictions, select = c(datetime, rockfall, RFPredictedClass, SVMPredictedClass, LOGPredictedClass)) 
-
-predictionsForPlot <- test_with_predictions |> 
-  mutate(RFPredictedClass = ifelse(RFPredictedClass == 2,1,0), SVMPredictedClass = ifelse(SVMPredictedClass == 2,1,0), LOGPredictedClass = ifelse(LOGPredictedClass == 2,1,0))
-
-
-#create daily count
-rockfallsDailyCount <- predictionsForPlot |>
-  mutate(datetime = as.Date(as.POSIXct(datetime)), rockfall = as.numeric(rockfall)) |>  # Extract date from datetime
-  group_by(datetime) |>
-  summarize(rockfallDailySum = sum(rockfall), 
-            predictedRFDailySum = sum(RFPredictedClass),
-            predictedSVMDailySum = sum(SVMPredictedClass),
-            predictedLOGDailySum = sum(LOGPredictedClass)
-            )
-
-
-PredictionTSComp <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(datetime))) + 
-  geom_line(aes(y = rockfallDailySum, color = "Actual Data"), size = 1) +
-  geom_line(aes(y = predictedRFDailySum, color = "Random Forest Prediction"), size = 1, alpha = 0.25) +
-  geom_line(aes(y = predictedSVMDailySum, color = "Support Vector Machine Prediction"), size = 1, alpha = 0.25) +
-  geom_line(aes(y = predictedLOGDailySum, color = "Logistic Regression Prediction"), size = 1, alpha = 0.25) +
-  labs(
-    title = 'Mine 8: Rockfall Initiation Hours',
-    y = 'Count of Rockfall Initiation Hours',
-    color = "Legend"
-  ) + 
-  scale_color_manual(values = c("Actual Data" = "red", "Random Forest Prediction" = "blue", 
-                                "Support Vector Machine Prediction" = "green", "Logistic Regression Prediction" = "grey")) +
-  scale_x_datetime(expand = c(0, 0)) +
-  theme_bw() + 
-  theme(
-    axis.title.x = element_blank(), 
-    axis.text.y = element_text(size = 14), 
-    axis.title.y = element_text(size = 14), 
-    axis.text.x = element_text(size = 14), 
-    plot.title = element_text(size = 18),
-    legend.title = element_text(size = 14),
-    legend.text = element_text(size = 12),
-    legend.position = "right"  # Position the legend at the top
-  )
-
-
-ggsave(file = here("figures/PredictionTSComp.svg"), plot = PredictionTSComp, height = 6, width = 12)
-
-
-
-# Calculate the 7-day rolling sum for each prediction
-rockfallsDailyCount <- rockfallsDailyCount %>%
-  mutate(
-    rollingRockfallSum = rollapply(rockfallDailySum, width = 7, FUN = sum, align = "right", fill = NA),
-    rollingRFPredictedSum = rollapply(predictedRFDailySum, width = 7, FUN = sum, align = "right", fill = NA),
-    rollingSVMPredictedSum = rollapply(predictedSVMDailySum, width = 7, FUN = sum, align = "right", fill = NA),
-    rollingLOGPredictedSum = rollapply(predictedLOGDailySum, width = 7, FUN = sum, align = "right", fill = NA))
-
-# Create the plot with rolling sums
-PredictionTSCompRolling <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(datetime))) + 
-  geom_line(aes(y = rollingRockfallSum, color = "Actual Data (7-day rolling)"), size = 1) +
-  geom_line(aes(y = rollingRFPredictedSum, color = "Random Forest Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
-  geom_line(aes(y = rollingSVMPredictedSum, color = "Support Vector Machine Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
-  geom_line(aes(y = rollingLOGPredictedSum, color = "Logistic Regression Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
-  labs(
-    title = 'Mine 8: Rockfall Initiation Hours (7-day Rolling Sum)',
-    y = 'Rolling Sum of Rockfall Initiation Hours',
-    color = "Legend"
-  ) + 
-  scale_color_manual(values = c("Actual Data (7-day rolling)" = "red", 
-                                "Random Forest Prediction (7-day rolling)" = "blue", 
-                                "Support Vector Machine Prediction (7-day rolling)" = "green", 
-                                "Logistic Regression Prediction (7-day rolling)" = "grey")) +
-  scale_x_datetime(expand = c(0, 0)) +
-  theme_bw() + 
-  theme(
-    axis.title.x = element_blank(), 
-    axis.text.y = element_text(size = 14), 
-    axis.title.y = element_text(size = 14), 
-    axis.text.x = element_text(size = 14), 
-    plot.title = element_text(size = 18),
-    legend.title = element_text(size = 14),
-    legend.text = element_text(size = 12),
-    legend.position = "right"  # Position the legend at the top
-  )
-
-# Display the plot
-PredictionTSCompRolling
-
-ggsave(file = here("figures/PredictionTSCompRolling.svg"), plot = PredictionTSCompRolling, height = 6, width = 12)
+#this is not actually used and just plots the predictions
+# 
+# 
+# # Combine the test data with predictions and actual values
+# test_with_predictions<- subset(test_with_predictions, select = c(datetime, rockfall, RFPredictedClass, SVMPredictedClass, LOGPredictedClass)) 
+# 
+# predictionsForPlot <- test_with_predictions |> 
+#   mutate(RFPredictedClass = ifelse(RFPredictedClass == 2,1,0), SVMPredictedClass = ifelse(SVMPredictedClass == 2,1,0), LOGPredictedClass = ifelse(LOGPredictedClass == 2,1,0))
+# 
+# 
+# #create daily count
+# rockfallsDailyCount <- predictionsForPlot |>
+#   mutate(datetime = as.Date(as.POSIXct(datetime)), rockfall = as.numeric(rockfall)) |>  # Extract date from datetime
+#   group_by(datetime) |>
+#   summarize(rockfallDailySum = sum(rockfall), 
+#             predictedRFDailySum = sum(RFPredictedClass),
+#             predictedSVMDailySum = sum(SVMPredictedClass),
+#             predictedLOGDailySum = sum(LOGPredictedClass)
+#             )
+# 
+# 
+# PredictionTSComp <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(datetime))) + 
+#   geom_line(aes(y = rockfallDailySum, color = "Actual Data"), size = 1) +
+#   geom_line(aes(y = predictedRFDailySum, color = "Random Forest Prediction"), size = 1, alpha = 0.25) +
+#   geom_line(aes(y = predictedSVMDailySum, color = "Support Vector Machine Prediction"), size = 1, alpha = 0.25) +
+#   geom_line(aes(y = predictedLOGDailySum, color = "Logistic Regression Prediction"), size = 1, alpha = 0.25) +
+#   labs(
+#     title = 'Mine 8: Rockfall Initiation Hours',
+#     y = 'Count of Rockfall Initiation Hours',
+#     color = "Legend"
+#   ) + 
+#   scale_color_manual(values = c("Actual Data" = "red", "Random Forest Prediction" = "blue", 
+#                                 "Support Vector Machine Prediction" = "green", "Logistic Regression Prediction" = "grey")) +
+#   scale_x_datetime(expand = c(0, 0)) +
+#   theme_bw() + 
+#   theme(
+#     axis.title.x = element_blank(), 
+#     axis.text.y = element_text(size = 14), 
+#     axis.title.y = element_text(size = 14), 
+#     axis.text.x = element_text(size = 14), 
+#     plot.title = element_text(size = 18),
+#     legend.title = element_text(size = 14),
+#     legend.text = element_text(size = 12),
+#     legend.position = "right"  # Position the legend at the top
+#   )
+# 
+# 
+# ggsave(file = here("figures/PredictionTSComp.svg"), plot = PredictionTSComp, height = 6, width = 12)
+# 
+# 
+# 
+# # Calculate the 7-day rolling sum for each prediction
+# rockfallsDailyCount <- rockfallsDailyCount %>%
+#   mutate(
+#     rollingRockfallSum = rollapply(rockfallDailySum, width = 7, FUN = sum, align = "right", fill = NA),
+#     rollingRFPredictedSum = rollapply(predictedRFDailySum, width = 7, FUN = sum, align = "right", fill = NA),
+#     rollingSVMPredictedSum = rollapply(predictedSVMDailySum, width = 7, FUN = sum, align = "right", fill = NA),
+#     rollingLOGPredictedSum = rollapply(predictedLOGDailySum, width = 7, FUN = sum, align = "right", fill = NA))
+# 
+# # Create the plot with rolling sums
+# PredictionTSCompRolling <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(datetime))) + 
+#   geom_line(aes(y = rollingRockfallSum, color = "Actual Data (7-day rolling)"), size = 1) +
+#   geom_line(aes(y = rollingRFPredictedSum, color = "Random Forest Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
+#   geom_line(aes(y = rollingSVMPredictedSum, color = "Support Vector Machine Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
+#   geom_line(aes(y = rollingLOGPredictedSum, color = "Logistic Regression Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
+#   labs(
+#     title = 'Mine 8: Rockfall Initiation Hours (7-day Rolling Sum)',
+#     y = 'Rolling Sum of Rockfall Initiation Hours',
+#     color = "Legend"
+#   ) + 
+#   scale_color_manual(values = c("Actual Data (7-day rolling)" = "red", 
+#                                 "Random Forest Prediction (7-day rolling)" = "blue", 
+#                                 "Support Vector Machine Prediction (7-day rolling)" = "green", 
+#                                 "Logistic Regression Prediction (7-day rolling)" = "grey")) +
+#   scale_x_datetime(expand = c(0, 0)) +
+#   theme_bw() + 
+#   theme(
+#     axis.title.x = element_blank(), 
+#     axis.text.y = element_text(size = 14), 
+#     axis.title.y = element_text(size = 14), 
+#     axis.text.x = element_text(size = 14), 
+#     plot.title = element_text(size = 18),
+#     legend.title = element_text(size = 14),
+#     legend.text = element_text(size = 12),
+#     legend.position = "right"  # Position the legend at the top
+#   )
+# 
+# # Display the plot
+# PredictionTSCompRolling
+# 
+# ggsave(file = here("figures/PredictionTSCompRolling.svg"), plot = PredictionTSCompRolling, height = 6, width = 12)
 
 
 ```
