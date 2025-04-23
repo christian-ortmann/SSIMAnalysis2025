@@ -64,22 +64,22 @@ mine7Weather <- clean_names(mine7Weather)
 
 mine7Weather <- mine7Weather |>
   mutate('datetime' = as_datetime(timestamp)) |>
-  # mutate('rainmm' = (Rain.Meter.inst-lag(Rain.Meter.inst))*0.1) |> #instantaneous rain values
-  # mutate('rainmm' = replace_na(rainmm, 0)) |> # handle NA values in rainM so cumulative sum works
-  mutate('irradiance' = ((solar_irradiance_inst*1000)/(56.62*(1+0.0006*(outdoor_temp_avg-32)*5/9)))) |>
-  mutate('tempC' = (outdoor_temp_avg-32)*5/9) |>
-  # mutate('sumrain24' = rollapply(rainmm, width = 1440, FUN = sum, fill = 0, align = 'left')) |> #24hr sum
-  # mutate('rainmmCumu' = cumsum(rainmm)) |> #rolling sum
-  mutate('windMS' = m_tk_wind_speed_inst/2.2369) |>
+  # mutate('rainmm' = (Rain.Meter.inst-lag(Rain.Meter.inst))*0.1) |> #instantaneous rain values calculated later
+  # mutate('rainmm' = replace_na(rainmm, 0)) |> # handle NA values in rainM so cumulative sum works calculated later
+  mutate('irradiance' = ((solar_irradiance_inst*1000)/(56.62*(1+0.0006*(outdoor_temp_avg-32)*5/9)))) |> #convert sensor values to W/m^2
+  mutate('tempC' = (outdoor_temp_avg-32)*5/9) |> #F to C
+  # mutate('sumrain24' = rollapply(rainmm, width = 1440, FUN = sum, fill = 0, align = 'left')) |> #24hr sum calculated later
+  # mutate('rainmmCumu' = cumsum(rainmm)) |> #rolling sum calculated later
+  mutate('windMS' = m_tk_wind_speed_inst/2.2369) |> #fps to mps
   group_by(datetime,
            tempC,
-           # sumrain24,
-           # rainmm,
+           # sumrain24, calculated later
+           # rainmm, calculated later
            windMS,
            irradiance
-           # rainmmCumu
+           # rainmmCumu calculated later
            ) |>
-  # filter(rainmm >= 0 ) |> #remove rainfall values that are negative
+  # filter(rainmm >= 0 ) |> #remove rainfall values that are negative V
   dplyr::summarise(.groups = 'drop')
 
 #CONDENSE TO HOURS NOW
@@ -189,7 +189,7 @@ ggsave(file="figures/PD7.svg", plot=PD7, width=8, height=5)
 
 ```{r merge in rockfall}
 
-m7Falls <- valData |> 
+m7Falls <- valData |>  #format rockfall data into hms
   subset(select = c(date, timeOfInitiation)) |> 
   mutate(date = gsub("24", "2022", date)) |>
   separate(timeOfInitiation, into = c('h', 'm', 's'), sep = ':') |>

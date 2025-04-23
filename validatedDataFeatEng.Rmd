@@ -617,7 +617,7 @@ ggsave(file = here("figures/m7windRockfalls.svg"), plot = wind7_combined, height
 
 
 
-comb <- (t7_combined + p7_combined) / (pi7_combined + wind7_combined) / (irr7_combined + insol7_combined) + 
+comb <- (t7_combined + p7_combined) / (pi7_combined + wind7_combined) / (irr7_combined + insol7_combined) +  # combining plots together into one larger one 
   plot_layout( guides = 'auto') &  
   theme(
     plot.margin = margin(0, 0, 30, 30)  # Increase space between plots
