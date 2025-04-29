@@ -162,7 +162,7 @@ fp7 <- ggplot(m7cont) +
   theme_publish()
 fp7
 
-ggsave(file = here("figures/m7FP.svg"), plot = i7, height = 5, width = 7)
+ggsave(file = here("figures/m7FP.svg"), plot = fp7, height = 5, width = 7)
 
 ```
 
