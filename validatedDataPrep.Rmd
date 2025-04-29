@@ -29,8 +29,8 @@ pacman::p_load(
 
 ```{r read in data}
 
-#valData <- read_csv(here("rockfall_mine7_min_binary_validated.csv")) #add once we have the data
-#valData <- data.frame("date" = valData$Date, "timeOfInitiation" = valData$`Time of Initiation`) #re-format a bit
+valData <- read_csv(here("data/rockfall_mine7_min_binary_validated.csv")) #add once we have the data
+valData <- data.frame("date" = valData$Date, "timeOfInitiation" = valData$`Time of Initiation`) #re-format a bit
 
 #MINE8
 jan <- read_csv(here('data/jan2022.csv'))
@@ -39,7 +39,7 @@ mar <- read_csv('data/mar2022.csv')
 apr <- read_csv('data/apr2022.csv')
 teck <- read_csv('data/teckWeather.csv')
 colnames(teck) <- teck[2,]
-teck <-(teck[c(636:2483),])
+teck <-(teck[c(1980:2483),])
 teck <- clean_names(teck)
 noView <- read_csv(here("data/timesUnavailable.csv"))[1:3] #times when slope is obscured
 ```
@@ -48,7 +48,7 @@ noView <- read_csv(here("data/timesUnavailable.csv"))[1:3] #times when slope is 
 ``` {r clean up weather data}
 
 
-noView <- read_csv('C:/Users/cortmann/Documents/finalAnalysis06112024/Mine7/dataUsedInAnalysis/timesUnavailable.csv')[1:3] #times to not analyze
+noView <- read_csv(here('data/timesUnavailable.csv'))[1:3] #times to not analyze
 noView$day <- paste0('0',noView$day)
 noView <- noView |> #convert start end times to Posixct
   mutate(start = mdy_hms(paste0(day, start))) |>
@@ -56,9 +56,10 @@ noView <- noView |> #convert start end times to Posixct
   mutate('interval' = interval(start, end))
 
 
-mine7Weather <- data_merge(list(jan,feb, mar, apr), join = "bind") #essentially a full join of multiple data frames
+mine7Weather <- data_merge(list(jan,feb, mar, apr), join = "bind") |> #essentially a full join of multiple data frames
+  mutate('datetime' = as_datetime(timestamp))
 
-mine7Weather <- mine7Weather[c(2965:113841),] #constrain time to deployment range at mine 7
+mine7Weather <- mine7Weather[c(83603:113841),] #constrain time to deployment range at mine 7
 
 mine7Weather <- clean_names(mine7Weather)
 
@@ -76,7 +77,7 @@ mine7Weather <- mine7Weather |>
            # sumrain24, calculated later
            # rainmm, calculated later
            windMS,
-           irradiance
+           irradiance           
            # rainmmCumu calculated later
            ) |>
   # filter(rainmm >= 0 ) |> #remove rainfall values that are negative V
@@ -91,10 +92,6 @@ mine7Weather <- mine7Weather |>
 
 mine7Weather <- mine7Weather |> 
   mutate('rainmm' = as.numeric(teck$precipitation_1h))
-
-
-
-
 
 
 ```
@@ -113,7 +110,7 @@ cva <- CVA(test)
 plot <- cva$Figure
 plot
 cva
-#found that IETD is 5.9 hours
+#found that IETD is 3 hours
 #thus define rainfall events
 plot <- plot + 
   labs(
@@ -122,7 +119,7 @@ plot <- plot +
     y = "Coefficient of Variation (CVA)"
   )
 
-result <- IETD::drawre(test, 5.9, 0.1) #find events that are at least 5.9 hours apart and rain more than 1mm
+result <- IETD::drawre(test, 3, 0.1) #find events that are at least 5.9 hours apart and rain more than 1mm
 ggsave(file=here("figures/mine7IETD.png"), plot=plot, width=5, height=5)
 
 
@@ -159,7 +156,7 @@ PI7 <- ggplot(result$Rainfall_Characteristics) +
   )
 
 PI7
-ggsave(file="figures/PI8.svg", plot=PI7, width=8, height=5)
+ggsave(file="figures/PI7.svg", plot=PI7, width=8, height=5)
 
 
 PD7 <- ggplot(result$Rainfall_Characteristics) + 
@@ -201,7 +198,7 @@ m7Falls <- valData |>  #format rockfall data into hms
   ) |> 
   unite(timeOfInitiation, h, m, s, sep = ":")
 
-m7Falls$datetime <- as.POSIXct(mdy_hms(paste(m7Falls$date, m8Falls$timeOfInitiation, sep = " "))) 
+m7Falls$datetime <- as.POSIXct(mdy_hms(paste(m7Falls$date, m7Falls$timeOfInitiation, sep = " "))) 
 
 M7Rockfalls <- m7Falls |> 
   arrange(datetime) |> 
@@ -236,16 +233,18 @@ RF7 <- ggplot(rockfallsDailyCount) +
 
 ggsave(here("figures/mine7RockfallValidatedTimeSeries.png"), plot=RF7, width=7, height=5)
 
-RF8
+RF7
 #---------------------------------------
 #add in the rockfall to the weather data
 #---------------------------------------
 
-m7WeatherHour <- subset(mine7Weather, select = -c(time,cumuRain))
+# m7WeatherHour <- subset(mine7Weather, select = -c(time
+#                                                  # ,cumuRain)
+#                                                  ))
 
 m7Falls$hour_only <- format(m7Falls$datetime, "%Y-%m-%d %H")
 
-m7WeatherHour_wRF <- m7WeatherHour |>
+m7Weather_wRF <- mine7Weather |>
   mutate('rockfall' = ifelse(format(datetime, "%Y-%m-%d %H") %in% m7Falls$hour_only, 1, 0))
 
 
@@ -295,7 +294,7 @@ RF7 <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(avg_time))) +
 RF7
 
 
-ggsave(here("figures/mine8RockfallValidatedTimeSeries.png"), plot=RF8, width=7, height=5)
+ggsave(here("figures/mine8RockfallValidatedTimeSeries.png"), plot=RF7, width=7, height=5)
 
 
 #-----------------------
@@ -305,7 +304,7 @@ ggsave(here("figures/mine8RockfallValidatedTimeSeries.png"), plot=RF8, width=7, 
 saveRDS(M7Rockfalls, here("mine7RockfallsValidatedMinute.rds"))
 
 
-saveRDS(m7WeatherHour_wRF, here("mine7FinalDataValidated.rds"))
+saveRDS(m7Weather_wRF, here("mine7FinalDataValidated.rds"))
 
 ```
 
