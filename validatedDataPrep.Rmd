@@ -188,7 +188,7 @@ ggsave(file="figures/PD7.svg", plot=PD7, width=8, height=5)
 
 m7Falls <- valData |>  #format rockfall data into hms
   subset(select = c(date, timeOfInitiation)) |> 
-  mutate(date = gsub("24", "2022", date)) |>
+  mutate(date = gsub("22", "2022", date)) |>
   separate(timeOfInitiation, into = c('h', 'm', 's'), sep = ':') |>
   mutate(
     # Add leading zero if hours, minutes, or seconds have only one digit
@@ -300,6 +300,8 @@ ggsave(here("figures/mine8RockfallValidatedTimeSeries.png"), plot=RF7, width=7, 
 #-----------------------
 #save data as a R object
 #-----------------------
+write.csv(rockfallsDailyCount,here("externalAnalysis/m7DailyRockfallCount.csv"))
+
 
 saveRDS(M7Rockfalls, here("mine7RockfallsValidatedMinute.rds"))
 

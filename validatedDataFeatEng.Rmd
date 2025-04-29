@@ -21,7 +21,8 @@ pacman::p_load(
   tidyverse, #ggplot, dplyr, readr etc.
   remotes, #to install a github package for time integration
   envalysis, #for publication ready plots
-  patchwork
+  patchwork,
+  zoo
   
 )
 
@@ -149,11 +150,25 @@ calculate_FP <- function(tempC, time) {
 
 m7cont$FP <- calculate_FP(m7cont$tempC, m7cont$time)
 
+#freezing potential
+fp7 <- ggplot(m7cont) + 
+  geom_line(aes(as.POSIXct(datetime), FP), color = 'darkblue') +
+  geom_line(aes(as.POSIXct(datetime),tempC, color = "lightblue")) +
+  labs(x = '',
+       y = bquote('Freezing Potential (\u00B0C*hour)'), 
+       title = 'Freezing Potential') + 
+  scale_y_continuous(expand = c(0, 0))+ 
+  scale_x_datetime(expand = c(0, 0)) +
+  theme_publish()
+fp7
+
+ggsave(file = here("figures/m7FP.svg"), plot = i7, height = 5, width = 7)
+
 ```
 
 ```{r standardize data for lasso logit}
 
-noTime <- subset(m7cont, select = -c(datetime, rockfall))
+noTime <- subset(m7cont, select = -c(datetime, rockfall, time))
 
 m7contStd <- as.data.frame(scale(noTime, center=TRUE, scale=TRUE)) #standardize data
 
@@ -171,465 +186,492 @@ saveRDS(m7cont, here("mine7DataForML.rds"))
 saveRDS(m7contStd, here("mine7StandardizedDataForML.rds"))
 
 
+#extract data for plotting in excel and excel manipulation
+
+write.csv(subset(m7cont, select = -c(time)), here("externalAnalysis/mine7DataForML.csv"))
+
+write.csv(m7contStd, here("externalAnalysis/mine7StandardizedDataForML.csv"))
+
+
 ```
 
 
 
-``` {r creating all weather plot data}
 
 
-
-# Create daily count and unique hour count
-rockfallsDailyCount <- M7Rockfalls |>
-  mutate(rockfall = 1, 
-         date = as_date(datetime), 
-         hour = hour(datetime)) |>
-  group_by(date) |>
-  summarize(
-    rockfall = sum(rockfall),  # Total rockfalls per day
-    unique_hours = n_distinct(hour),  # Count of unique hours with rockfalls
-    avg_time = mean(datetime)  # Average timestamp for plotting
-  ) |>
-  mutate(cumuRockfall = cumsum(rockfall))
-
-# Plot daily rockfall with unique hour count
-RF7 <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(avg_time))) + 
-  geom_point(aes(y = rockfall, color = "Discrete Rockfalls")) +
-  geom_line(aes(y = rockfall, color = "Discrete Rockfalls")) +
-  geom_point(aes(y = unique_hours, color = "Rockfall Hours")) +
-  geom_line(aes(y = unique_hours, color = "Rockfall Hours")) +
-  labs(title = 'Daily Rockfall Events and Hours of Initiation', 
-       y = 'Discrete Count',
-       color = "Legend") +  # Legend title
-  scale_y_continuous(
-    limits = c(0, 40), 
-    sec.axis = sec_axis(~ . * (24 / 40), name = "Hours with Rockfall")  # Rescale to max 24 hours
-  ) +   
-  scale_x_datetime(expand = c(0, 0)) +
-  scale_color_manual(values = c("Discrete Rockfalls" = "red", "Rockfall Hours" = "blue")) +  # Custom colors
-  theme_bw() + 
-  theme(
-    axis.title.x = element_blank(), 
-    axis.text.y = element_text(size = 14), 
-    axis.title.y = element_text(size = 14), 
-    axis.text.x = element_text(size = 14), 
-    plot.title = element_text(size = 14),
-    legend.position = "bottom",
-    legend.title = element_blank()
-  )
-
-RF7
-
-
-ggsave(here("figures/mine7RockfallValidatedTimeSeries.png"), plot=RF7, width=7, height=5)
-
-
-
-
-
-#-----------------------
-m7cont$datetime <- as.POSIXct(m7cont$datetime, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
-max_irradiance <- max(m7cont$irradiance, na.rm = TRUE)
-max_solarInsol <- max(m7cont$solarInsol24, na.rm = TRUE)
-
-
-max_rainmm <- max(m7cont$rainmm, na.rm = TRUE)
-max_intensity <- max(m7cont$intensity, na.rm = TRUE)
-
-#temperature
-weatherplot7TempC <- ggplot(m7cont) + 
-  geom_line(aes(datetime, tempC, color = 'Temperature 1hr'), alpha = 0.2) + 
-  geom_line(aes(datetime,na.locf(rollapply(tempC, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Temperature 24hr")) + 
-  labs(x = '',
-       y = 'Temperature (\u00B0C)', 
-       title = 'Temperature') + 
-  scale_y_continuous(expand = c(0, 0)) +  # Blank secondary y-axis 
-  scale_x_datetime(expand = c(0, 0)) +
-  scale_color_manual(values = c("Temperature 1hr" = "red", 
-                                "Temperature 24hr" = "red")) +
-  theme_publish() + 
-theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
-      legend.direction = "horizontal", 
-          legend.title = element_blank(),
-          axis.title.x = element_blank(), 
-          axis.title.y = element_text(size = 11),
-          axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5)
-    )
-
-t7 <- weatherplot7TempC
-t7
-
-#add rockfall
-#-------------------------------------
-# Define scaling factors
-max_temp <- max(m7cont$tempC, na.rm = TRUE)  # Max temperature
-min_temp <- min(m7cont$tempC, na.rm = TRUE)  # Max temperature
-
-max_rockfalls <- 10  # Set max rockfall count to 15
-
-# Create the combined plot
-t7_combined <- ggplot(m7cont, aes(x = datetime)) + 
-  # Temperature plot
-  # geom_line(aes(y = tempC, color = "Temperature 1hr"), alpha = 0.2) + 
-  geom_line(aes(y = na.locf(rollapply(tempC, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Temperature 24hr")) + 
-  # Rockfall data scaled to match temperature range
-  # geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_temp / max_rockfalls),color = ), alpha = 0.5, fill = "lightgray")
-geom_area(data = rockfallsDailyCount, 
-            aes(x = as.POSIXct(avg_time), 
-                y = rockfall,  # Shift it up from min_temp
-            color = "Discrete Rockfalls"), alpha = 0.5) +  # Axis labels and limits
-  labs(x = '', 
-       y = 'Temperature (\u00B0C)', 
-       title = 'Temperature', 
-       color = "Legend") + 
-  scale_y_continuous(limits = c(min_temp, max_temp),  # Fix temperature axis limits
-                     sec.axis = sec_axis(~ (. - min_temp) * (max_rockfalls / (max_temp - min_temp)), name = "Rockfall Count", breaks = seq(0, 10, 2)), expand = expansion(mult = c(0, 0.05))) + 
-  scale_x_datetime(expand = c(-0.005, 0)) +
-  scale_color_manual(values = c(
-    # "Temperature 1hr" = "red", 
-                                
-    "Temperature 24hr" = "red", 
-                               
-     "Discrete Rockfalls" = "lightgray")) +
-  theme_publish() + 
-  theme(legend.position = "bottom",
-        legend.direction = "horizontal",
-        legend.title = element_blank(),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 11),
-        axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
-
-# Display the updated plot
-t7_combined
-
-
-#--------------------------
-
-
-#precipitation
-weatherplot7Precip <- ggplot(m7cont) + 
-  geom_line(aes(datetime, rainmm, color = 'Rainfall 1hr')) + 
-  geom_line(aes(datetime, scales::rescale(intensity, to = c(0, max_rainmm)), color = "Rainfall Intensity")) + 
-  labs(x = '',
-       y = 'Precipitation (mm)',
-       title = 'Precipitation') + 
-  scale_color_manual(values = c("Rainfall 1hr" = "blue", 
-                                "Rainfall Intensity" = "orange")) +
-  scale_y_continuous(expand = c(0, 0), sec.axis = sec_axis(~ . * (max_intensity / max_rainmm), name = "Rainfall Intensity (mm/hr)")) + 
-  scale_x_datetime(expand = c(0, 0)) +
-  theme_publish() +
-theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
-      legend.direction = "horizontal", 
-          legend.title = element_blank(),
-          axis.title.x = element_blank(), 
-          axis.title.y = element_text(size = 11),
-          axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5)
-    )
-
-
-
-p7 <- weatherplot7Precip
-p7
-
-
-
-#add rockfall for precip intensity
-#-------------------------------------
-# Define scaling factors
-max_inten <- max(m7cont$intensity, na.rm = TRUE)  # Max temperature
-max_rockfalls <- 40  # Set max rockfall count to 40
-
-# Create the combined plot
-pi7_combined <- ggplot(m7cont, aes(x = datetime)) + 
-  # Temperature plot
-  geom_line(aes(y = intensity, color = "Precipitation Intensity")) + 
-  # Rockfall data scaled to match temperature range
-  geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_inten / max_rockfalls),color = "Discrete Rockfalls"), alpha = 0.5, fill = "lightgray") +
-  # Axis labels and limits
-  labs(x = '', 
-       y = 'Precipitaion Intensity (mm/hr)', 
-       title = 'Precipitation Intensity', 
-       color = "Legend") + 
-  scale_y_continuous(limits = c(0, max_inten),  # Fix temperature axis limits
-                     sec.axis = sec_axis(~ . * (max_rockfalls / max_inten), name = "Rockfall Count", breaks = seq(0, 40, 10)), expand = expansion(mult = c(0, 0.05))) + 
-  scale_x_datetime(expand = c(-0.005, 0)) +
-  scale_color_manual(values = c(
-    "Precipitation Intensity" = "blue", 
-                                
-    # "Temperature 24hr" = "red", 
-                               
-     "Discrete Rockfalls" = "lightgray")) +
-  theme_publish() + 
-  theme(legend.position = "bottom",
-        legend.direction = "horizontal",
-        legend.title = element_blank(),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 11),
-        axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
-
-# Display the updated plot
-pi7_combined
-
-
-#--------------------------
-
-
-
-#add rockfall for precip 
-#-------------------------------------
-# Define scaling factors
-max_precip <- max(m7cont$rainmm, na.rm = TRUE)  # Max temperature
-max_rockfalls <- 40  # Set max rockfall count to 40
-
-# Create the combined plot
-p7_combined <- ggplot(m7cont, aes(x = datetime)) + 
-  # Temperature plot
-  geom_line(aes(y = rainmm, color = "Precipitation 1hr")) + 
-  # Rockfall data scaled to match temperature range
-  geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_precip / max_rockfalls),color = "Discrete Rockfalls"), alpha = 0.5, fill = "lightgray") +
-  # Axis labels and limits
-  labs(x = '', 
-       y = 'Precipitation (mm)', 
-       title = 'Precipitation', 
-       color = "Legend") + 
-  scale_y_continuous(limits = c(0, max_precip),  # Fix temperature axis limits
-                     sec.axis = sec_axis(~ . * (max_rockfalls / max_precip), name = "Rockfall Count", breaks = seq(0, 40, 10)), expand = expansion(mult = c(0, 0.05))) + 
-  scale_x_datetime(expand = c(-0.005, 0)) +
-  scale_color_manual(values = c(
-    "Precipitation 1hr" = "skyblue", 
-                                
-    # "Temperature 24hr" = "red", 
-                               
-     "Discrete Rockfalls" = "lightgray")) +
-  theme_publish() + 
-  theme(legend.position = "bottom",
-        legend.direction = "horizontal",
-        legend.title = element_blank(),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 11),
-        axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
-
-# Display the updated plot
-p7_combined
-
-
-#--------------------------
-
-
-#irradiance
-weatherplot7Irr <- ggplot(m7cont) + 
-  geom_line(aes(datetime, irradiance, color = 'Irradiance 1hr'), alpha = 0.2) +
-  geom_line(aes(datetime, na.locf(rollapply(irradiance, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Irradiance 24hr")) + 
-  geom_line(aes(datetime, scales::rescale(solarInsol24, to = c(0, max_irradiance)), color = 'Solar Insolation 24hr')) + 
-  labs(x = '',
-       y = bquote('Irradiance' (W/m^2)), 
-       title = 'Solar Irradiance') + 
-  scale_y_continuous(expand = c(0, 0), sec.axis = sec_axis(~ . * (max_solarInsol / max_irradiance), name = bquote('Solar Insolation' ~ (kWh/m^2)))) + 
-  scale_x_datetime(expand = c(0, 0)) +
-  scale_color_manual(values = c("Irradiance 1hr" = "yellow4", 
-                                "Irradiance 24hr" = "yellow4",
-                                "Solar Insolation 24hr" = "purple")) +
-  theme_publish() + 
-theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
-      legend.direction = "horizontal", 
-          legend.title = element_blank(),
-          axis.title.x = element_blank(), 
-          axis.title.y = element_text(size = 11),
-          axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5)
-    )
-
-
-i7 <- weatherplot7Irr
-i7
-
-
-#add rockfall for irradiance
-#-------------------------------------
-# Define scaling factors
-max_irr <- max(na.locf(rollapply(m7cont$irradiance, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)))  # Max temperature
-max_rockfalls <- 40  # Set max rockfall count to 40
-
-# Create the combined plot
-irr7_combined <- ggplot(m7cont, aes(x = datetime)) + 
-  # Temperature plot
-  geom_line(aes(datetime, na.locf(rollapply(irradiance, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Irradiance 24hr")) + 
-  # Rockfall data scaled to match temperature range
-  geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_irr / max_rockfalls),color = "Discrete Rockfalls"), alpha = 0.5, fill = "lightgray") +
-  # Axis labels and limits
-  labs(x = '', 
-       y = bquote('Irradiance' (kW/m^2)), 
-       title = 'Solar Irradiance',
-       color = "Legend") + 
-  scale_y_continuous(limits = c(0, max_irr),  # Fix temperature axis limits
-                     sec.axis = sec_axis(~ . * (max_rockfalls / max_irr), name = "Rockfall Count", breaks = seq(0, 40, 10)), expand = expansion(mult = c(0, 0.05))) + 
-  scale_x_datetime(expand = expansion(mult = c(0, 0))) +
-  scale_color_manual(values = c(
-    "Irradiance 24hr" = "yellow4", 
-                                
-    # "Temperature 24hr" = "red", 
-                               
-     "Discrete Rockfalls" = "lightgray")) +
-  theme_publish() + 
-  theme(legend.position = "bottom",
-        legend.direction = "horizontal",
-        legend.title = element_blank(),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 11),
-        axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
-
-# Display the updated plot
-irr7_combined
-
-
-#--------------------------
-
-
-
-#add rockfall for solar insolation
-#-------------------------------------
-# Define scaling factors
-max_insol <- max(m7cont$solarInsol24, na.rm = TRUE)  # Max temperature
-max_rockfalls <- 40  # Set max rockfall count to 40
-
-# Create the combined plot
-insol7_combined <- ggplot(m7cont, aes(x = datetime)) + 
-  # Temperature plot
-  geom_line(aes(datetime,solarInsol24, color = 'Solar Insolation 24hr')) +
-  # geom_line(aes(datetime, na.locf(rollapply(irradiance, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Irradiance 24hr")) + 
-  # Rockfall data scaled to match temperature range
-  geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_insol / max_rockfalls),color = "Discrete Rockfalls"), alpha = 0.5, fill = "lightgray") +
-  # Axis labels and limits
-  labs(x = '', 
-       y = bquote('Solar Insolation' ~ (kWh/m^2)), 
-       title = 'Solar Insolation',
-       color = "Legend") + 
-  scale_y_continuous(limits = c(0, max_insol),  # Fix temperature axis limits
-                     sec.axis = sec_axis(~ . * (max_rockfalls / max_insol), name = "Rockfall Count", breaks = seq(0, 40, 10)), expand = expansion(mult = c(0, 0.05))) + 
-  scale_x_datetime(expand = c(-0.005, 0)) +
-  scale_color_manual(values = c(
-    "Solar Insolation 24hr" = "purple", 
-                                
-    # "Temperature 24hr" = "red", 
-                               
-     "Discrete Rockfalls" = "lightgray")) +
-  theme_publish() + 
-  theme(legend.position = "bottom",
-        legend.direction = "horizontal",
-        legend.title = element_blank(),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 11),
-        axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
-
-# Display the updated plot
-insol7_combined
-
-
-#--------------------------
-
-
-
-
-#wind
-weatherplot7Wind <- ggplot(m7cont) + 
-  geom_line(aes(datetime, windMS, color = 'Wind 1hr'), alpha = 0.2) + 
-  geom_line(aes(datetime,na.locf(rollapply(windMS, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Wind 24hr")) +
-  labs(
-    title = " Wind",
-    x = "", 
-    y = "Wind (m/s)"
-  ) + 
-  scale_y_continuous(expand = c(0, 0)) +  # Blank secondary y-axis 
-  scale_x_datetime(expand = c(0, 0)) +
-     scale_color_manual(values = c("Wind 1hr" = "darkgreen", 
-                                "Wind 24hr" = "darkgreen")) +
-  theme_publish() + 
-theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
-      legend.direction = "horizontal", 
-          legend.title = element_blank(),
-          axis.title.x = element_blank(), 
-          axis.title.y = element_text(size = 11),
-          axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5)
-    )
-
-
-
-
-
-
-w7 <- weatherplot7Wind
-w7
-
-
-#add rockfall for wind
-#-------------------------------------
-# Define scaling factors
-max_wind <- max(na.locf(rollapply(m7cont$windMS, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)))  # Max temperature
-max_rockfalls <- 40  # Set max rockfall count to 40
-
-# Create the combined plot
-wind7_combined <- ggplot(m7cont, aes(x = datetime)) + 
-  # Temperature plot
-  # geom_line(aes(datetime,windMS, color = 'Wind 1hr')) +
-  geom_line(aes(datetime,na.locf(rollapply(windMS, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)),  color = 'Wind 24hr')) +
-  # Rockfall data scaled to match temperature range
-  geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_wind / max_rockfalls),color = "Discrete Rockfalls"), alpha = 0.5, fill = "lightgray") +
-  # Axis labels and limits
-  labs(x = '', 
-       y = 'Wind (m/s)', 
-       title = 'Wind',
-       color = "Legend") + 
-  scale_y_continuous(limits = c(0, max_wind),  # Fix temperature axis limits
-                     sec.axis = sec_axis(~ . * (max_rockfalls / max_wind), name = "Rockfall Count", breaks = seq(0, 40, 10)), 
-                     expand = expansion(mult = c(0, 0.05))) +  # Fix rockfall axis 0-40
-  scale_x_datetime(expand = c(-0.005, 0)) +
-  scale_color_manual(values = c(
-    "Wind 24hr" = "darkgreen", 
-                                
-    # "Temperature 24hr" = "red", 
-                               
-     "Discrete Rockfalls" = "lightgray")) +
-  theme_publish() + 
-  theme(legend.position = "bottom",
-        legend.direction = "horizontal",
-        legend.title = element_blank(),
-        axis.title.x = element_blank(),
-        axis.title.y = element_text(size = 11),
-        axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
-
-# Display the updated plot
-wind7_combined
-
-
-#--------------------------
-
-
-
-
-
-
-ggsave(file = here("figures/m7temp.svg"), plot = t7, height = 5, width = 7)
-ggsave(file = here("figures/m7precipitation.svg"), plot = p7, height = 5, width = 7)
-ggsave(file = here("figures/m7irradiance.svg"), plot = i7, height = 5, width = 7)
-ggsave(file = here("figures/m7wind.svg"), plot = w7, height = 5, width = 7)
-
-
-ggsave(file = here("figures/m7tempRockfalls.svg"), plot = t7_combined, height = 5, width = 7)
-ggsave(file = here("figures/m7precipitationRockfalls.svg"), plot = p7_combined, height = 5, width = 7)
-ggsave(file = here("figures/m7precipitationIntensityRockfalls.svg"), plot = pi7_combined, height = 5, width = 7)
-ggsave(file = here("figures/m7irradianceRockfalls.svg"), plot = irr7_combined, height = 5, width = 7)
-ggsave(file = here("figures/m7insolationRockfalls.svg"), plot = insol7_combined, height = 5, width = 7)
-ggsave(file = here("figures/m7windRockfalls.svg"), plot = wind7_combined, height = 5, width = 7)
-
-
-
-comb <- (t7_combined + p7_combined) / (pi7_combined + wind7_combined) / (irr7_combined + insol7_combined) +  # combining plots together into one larger one 
-  plot_layout( guides = 'auto') &  
-  theme(
-    plot.margin = margin(0, 0, 30, 30)  # Increase space between plots
-  )
-comb
-
-ggsave(file = here("figures/m7comb.png"), plot = comb, height = 12, width = 14)
+``` {r creating all weather plot data #BE WARY OF THIS CHUNK, IT PLOTS WEIRD, FOR EVERYONE'S SAKE, USE THE "externalAnalysis" FOLDER AND PLOT METEOROLOGICAL DATA THERE IN EXCEL}
+
+########################################################################
+#BE WARY OF THIS CHUNK, IT PLOTS WEIRD, FOR EVERYONE'S SAKE, USE THE "externalAnalysis" FOLDER AND PLOT METEOROLOGICAL DATA THERE IN EXCEL
+########################################################################
+
+#to access this chunk, highlight everything directly below and do control+shift+c to uncomment everything at once while retaining original comments
+
+# 
+# # Create daily count and unique hour count
+# rockfallsDailyCount <- M7Rockfalls |>
+#   mutate(rockfall = 1, 
+#          date = as_date(datetime), 
+#          hour = hour(datetime)) |>
+#   group_by(date) |>
+#   summarize(
+#     rockfall = sum(rockfall),  # Total rockfalls per day
+#     unique_hours = n_distinct(hour),  # Count of unique hours with rockfalls
+#     avg_time = mean(datetime)  # Average timestamp for plotting
+#   ) |>
+#   mutate(cumuRockfall = cumsum(rockfall))
+# 
+# # Plot daily rockfall with unique hour count
+# RF7 <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(avg_time))) + 
+#   geom_point(aes(y = rockfall, color = "Discrete Rockfalls")) +
+#   geom_line(aes(y = rockfall, color = "Discrete Rockfalls")) +
+#   geom_point(aes(y = unique_hours, color = "Rockfall Hours")) +
+#   geom_line(aes(y = unique_hours, color = "Rockfall Hours")) +
+#   labs(title = 'Daily Rockfall Events and Hours of Initiation', 
+#        y = 'Discrete Count',
+#        color = "Legend") +  # Legend title
+#   scale_y_continuous(
+#     limits = c(0, 40), 
+#     sec.axis = sec_axis(~ . * (24 / 40), name = "Hours with Rockfall")  # Rescale to max 24 hours
+#   ) +   
+#   scale_x_datetime(expand = c(0, 0)) +
+#   scale_color_manual(values = c("Discrete Rockfalls" = "red", "Rockfall Hours" = "blue")) +  # Custom colors
+#   theme_bw() + 
+#   theme(
+#     axis.title.x = element_blank(), 
+#     axis.text.y = element_text(size = 14), 
+#     axis.title.y = element_text(size = 14), 
+#     axis.text.x = element_text(size = 14), 
+#     plot.title = element_text(size = 14),
+#     legend.position = "bottom",
+#     legend.title = element_blank()
+#   )
+# 
+# RF7
+# 
+# 
+# ggsave(here("figures/mine7RockfallValidatedTimeSeries.png"), plot=RF7, width=7, height=5)
+# 
+# 
+# 
+# 
+# 
+# #-----------------------
+# m7cont$datetime <- as.POSIXct(m7cont$datetime, format = "%Y-%m-%d %H:%M:%S", tz = "UTC")
+# max_irradiance <- max(m7cont$irradiance, na.rm = TRUE)
+# max_solarInsol <- max(m7cont$solarInsol24, na.rm = TRUE)
+# 
+# 
+# max_rainmm <- max(m7cont$rainmm, na.rm = TRUE)
+# max_intensity <- max(m7cont$intensity, na.rm = TRUE)
+# 
+# #temperature
+# weatherplot7TempC <- ggplot(m7cont) + 
+#   geom_line(aes(datetime, tempC, color = 'Temperature 1hr'), alpha = 0.2) + 
+#   geom_line(aes(datetime,na.locf(rollapply(tempC, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Temperature 24hr")) + 
+#   labs(x = '',
+#        y = 'Temperature (\u00B0C)', 
+#        title = 'Temperature') + 
+#   scale_y_continuous(expand = c(0, 0)) +  # Blank secondary y-axis 
+#   scale_x_datetime(expand = c(0, 0)) +
+#   scale_color_manual(values = c("Temperature 1hr" = "red", 
+#                                 "Temperature 24hr" = "red")) +
+#   theme_publish() + 
+# theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
+#       legend.direction = "horizontal", 
+#           legend.title = element_blank(),
+#           axis.title.x = element_blank(), 
+#           axis.title.y = element_text(size = 11),
+#           axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5)
+#     )
+# 
+# t7 <- weatherplot7TempC
+# t7
+# 
+# 
+# # 
+# # m7ContHour_with_dailyRF <- m7cont %>%
+# #   mutate(date = as.Date(datetime)) %>%
+# #   left_join(rockfallsDailyCount, by = "date") %>%
+# #   rename(rockfall = rockfall.x) |> 
+# #   rename(dailyRockfall = rockfall.y)
+# 
+# #add rockfall
+# #-------------------------------------
+# # Define scaling factors
+# max_temp <- max(m7cont$tempC, na.rm = TRUE)  # Max temperature
+# min_temp <- min(m7cont$tempC, na.rm = TRUE)  # Max temperature
+# 
+# max_rockfalls <- max(rockfallsDailyCount$rockfall)  # Set max rockfall count to 1
+# 
+# 
+# 
+# 
+# # Create the combined plot
+# t7_combined <- ggplot(m7cont, aes(x = datetime)) + 
+#   # Temperature plot
+#   # geom_line(aes(y = tempC, color = "Temperature 1hr"), alpha = 0.2) + 
+#   geom_line(aes(y = na.locf(rollapply(tempC, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Temperature 24hr")) +
+#   # Rockfall data scaled to match temperature range
+#   # geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_temp / max_rockfalls), color = "Discrete Rockfalls"), alpha = 0.5) +
+#   geom_ribbon(data = rockfallsDailyCount,
+#               aes(x = as.POSIXct(date),
+#                   # y = rockfall,  # Shift it up from min_temp
+#                   ymax = rockfall,
+#                   ymin = min(rockfall),
+#               color = "Discrete Rockfalls"), alpha = 0.5) +  # Axis labels and limits
+#   labs(x = '', 
+#        y = 'Temperature (\u00B0C)', 
+#        title = 'Temperature', 
+#        color = "Legend") + 
+#   scale_y_continuous(limits = c(min_temp, max_temp),  # Fix temperature axis limits
+#                      sec.axis = sec_axis(~ (. - min_temp) * (max_rockfalls / (max_temp - min_temp)), name = "Rockfall Count", breaks = seq(0, max_rockfalls, 2)), expand = expansion(mult = c(0, 0.05))) + 
+#   scale_x_datetime(expand = c(-0.005, 0)) +
+#   scale_color_manual(values = c(
+#     # "Temperature 1hr" = "red", 
+#                                 
+#     "Temperature 24hr" = "red", 
+#                                
+#      "Discrete Rockfalls" = "lightgray")) +
+#   theme_publish() + 
+#   theme(legend.position = "bottom",
+#         legend.direction = "horizontal",
+#         legend.title = element_blank(),
+#         axis.title.x = element_blank(),
+#         axis.title.y = element_text(size = 11),
+#         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
+# 
+# 
+# # Display the updated plot
+# t7_combined
+# 
+# #--------------------------
+# 
+# 
+# #precipitation
+# weatherplot7Precip <- ggplot(m7cont) + 
+#   geom_line(aes(datetime, rainmm, color = 'Rainfall 1hr')) + 
+#   geom_line(aes(datetime, scales::rescale(intensity, to = c(0, max_rainmm)), color = "Rainfall Intensity")) + 
+#   labs(x = '',
+#        y = 'Precipitation (mm)',
+#        title = 'Precipitation') + 
+#   scale_color_manual(values = c("Rainfall 1hr" = "blue", 
+#                                 "Rainfall Intensity" = "orange")) +
+#   scale_y_continuous(expand = c(0, 0), sec.axis = sec_axis(~ . * (max_intensity / max_rainmm), name = "Rainfall Intensity (mm/hr)")) + 
+#   scale_x_datetime(expand = c(0, 0)) +
+#   theme_publish() +
+# theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
+#       legend.direction = "horizontal", 
+#           legend.title = element_blank(),
+#           axis.title.x = element_blank(), 
+#           axis.title.y = element_text(size = 11),
+#           axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5)
+#     )
+# 
+# 
+# 
+# p7 <- weatherplot7Precip
+# p7
+# 
+# 
+# 
+# #add rockfall for precip intensity
+# #-------------------------------------
+# # Define scaling factors
+# max_inten <- max(m7cont$intensity, na.rm = TRUE)  # Max temperature
+# max_rockfalls <- max(rockfallsDailyCount$rockfall)  # Set max rockfall count to 40
+# 
+# # Create the combined plot
+# pi7_combined <- ggplot(m7cont, aes(x = datetime)) + 
+#   # Temperature plot
+#   geom_line(aes(y = intensity, color = "Precipitation Intensity")) + 
+#   # Rockfall data scaled to match temperature range
+#   geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_inten / max_rockfalls),color = "Discrete Rockfalls"), alpha = 0.5, fill = "lightgray") +
+#   # Axis labels and limits
+#   labs(x = '', 
+#        y = 'Precipitaion Intensity (mm/hr)', 
+#        title = 'Precipitation Intensity', 
+#        color = "Legend") + 
+#   scale_y_continuous(limits = c(0, max_inten),  # Fix temperature axis limits
+#                      sec.axis = sec_axis(~ . * (max_rockfalls / max_inten), name = "Rockfall Count", breaks = seq(0, max_rockfalls, 10)), expand = expansion(mult = c(0, 0.05))) + 
+#   scale_x_datetime(expand = c(-0.005, 0)) +
+#   scale_color_manual(values = c(
+#     "Precipitation Intensity" = "blue", 
+#                                 
+#     # "Temperature 24hr" = "red", 
+#                                
+#      "Discrete Rockfalls" = "lightgray")) +
+#   theme_publish() + 
+#   theme(legend.position = "bottom",
+#         legend.direction = "horizontal",
+#         legend.title = element_blank(),
+#         axis.title.x = element_blank(),
+#         axis.title.y = element_text(size = 11),
+#         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
+# 
+# # Display the updated plot
+# pi7_combined
+# 
+# 
+# #--------------------------
+# 
+# 
+# 
+# #add rockfall for precip 
+# #-------------------------------------
+# # Define scaling factors
+# max_precip <- max(m7cont$rainmm, na.rm = TRUE)  # Max temperature
+# max_rockfalls <- 40  # Set max rockfall count to 40
+# 
+# # Create the combined plot
+# p7_combined <- ggplot(m7cont, aes(x = datetime)) + 
+#   # Temperature plot
+#   geom_line(aes(y = rainmm, color = "Precipitation 1hr")) + 
+#   # Rockfall data scaled to match temperature range
+#   geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_precip / max_rockfalls),color = "Discrete Rockfalls"), alpha = 0.5, fill = "lightgray") +
+#   # Axis labels and limits
+#   labs(x = '', 
+#        y = 'Precipitation (mm)', 
+#        title = 'Precipitation', 
+#        color = "Legend") + 
+#   scale_y_continuous(limits = c(0, max_precip),  # Fix temperature axis limits
+#                      sec.axis = sec_axis(~ . * (max_rockfalls / max_precip), name = "Rockfall Count", breaks = seq(0, 40, 10)), expand = expansion(mult = c(0, 0.05))) + 
+#   scale_x_datetime(expand = c(-0.005, 0)) +
+#   scale_color_manual(values = c(
+#     "Precipitation 1hr" = "skyblue", 
+#                                 
+#     # "Temperature 24hr" = "red", 
+#                                
+#      "Discrete Rockfalls" = "lightgray")) +
+#   theme_publish() + 
+#   theme(legend.position = "bottom",
+#         legend.direction = "horizontal",
+#         legend.title = element_blank(),
+#         axis.title.x = element_blank(),
+#         axis.title.y = element_text(size = 11),
+#         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
+# 
+# # Display the updated plot
+# p7_combined
+# 
+# 
+# #--------------------------
+# 
+# 
+# #irradiance
+# weatherplot7Irr <- ggplot(m7cont) + 
+#   geom_line(aes(datetime, irradiance, color = 'Irradiance 1hr'), alpha = 0.2) +
+#   geom_line(aes(datetime, na.locf(rollapply(irradiance, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Irradiance 24hr")) + 
+#   geom_line(aes(datetime, scales::rescale(solarInsol24, to = c(0, max_irradiance)), color = 'Solar Insolation 24hr')) + 
+#   labs(x = '',
+#        y = bquote('Irradiance' (W/m^2)), 
+#        title = 'Solar Irradiance') + 
+#   scale_y_continuous(expand = c(0, 0), sec.axis = sec_axis(~ . * (max_solarInsol / max_irradiance), name = bquote('Solar Insolation' ~ (kWh/m^2)))) + 
+#   scale_x_datetime(expand = c(0, 0)) +
+#   scale_color_manual(values = c("Irradiance 1hr" = "yellow4", 
+#                                 "Irradiance 24hr" = "yellow4",
+#                                 "Solar Insolation 24hr" = "purple")) +
+#   theme_publish() + 
+# theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
+#       legend.direction = "horizontal", 
+#           legend.title = element_blank(),
+#           axis.title.x = element_blank(), 
+#           axis.title.y = element_text(size = 11),
+#           axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5)
+#     )
+# 
+# 
+# i7 <- weatherplot7Irr
+# i7
+# 
+# 
+# #add rockfall for irradiance
+# #-------------------------------------
+# # Define scaling factors
+# max_irr <- max(na.locf(rollapply(m7cont$irradiance, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)))  # Max temperature
+# max_rockfalls <- 40  # Set max rockfall count to 40
+# 
+# # Create the combined plot
+# irr7_combined <- ggplot(m7cont, aes(x = datetime)) + 
+#   # Temperature plot
+#   geom_line(aes(datetime, na.locf(rollapply(irradiance, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Irradiance 24hr")) + 
+#   # Rockfall data scaled to match temperature range
+#   geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_irr / max_rockfalls),color = "Discrete Rockfalls"), alpha = 0.5, fill = "lightgray") +
+#   # Axis labels and limits
+#   labs(x = '', 
+#        y = bquote('Irradiance' (kW/m^2)), 
+#        title = 'Solar Irradiance',
+#        color = "Legend") + 
+#   scale_y_continuous(limits = c(0, max_irr),  # Fix temperature axis limits
+#                      sec.axis = sec_axis(~ . * (max_rockfalls / max_irr), name = "Rockfall Count", breaks = seq(0, 40, 10)), expand = expansion(mult = c(0, 0.05))) + 
+#   scale_x_datetime(expand = expansion(mult = c(0, 0))) +
+#   scale_color_manual(values = c(
+#     "Irradiance 24hr" = "yellow4", 
+#                                 
+#     # "Temperature 24hr" = "red", 
+#                                
+#      "Discrete Rockfalls" = "lightgray")) +
+#   theme_publish() + 
+#   theme(legend.position = "bottom",
+#         legend.direction = "horizontal",
+#         legend.title = element_blank(),
+#         axis.title.x = element_blank(),
+#         axis.title.y = element_text(size = 11),
+#         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
+# 
+# # Display the updated plot
+# irr7_combined
+# 
+# 
+# #--------------------------
+# 
+# 
+# 
+# #add rockfall for solar insolation
+# #-------------------------------------
+# # Define scaling factors
+# max_insol <- max(m7cont$solarInsol24, na.rm = TRUE)  # Max temperature
+# max_rockfalls <- 40  # Set max rockfall count to 40
+# 
+# # Create the combined plot
+# insol7_combined <- ggplot(m7cont, aes(x = datetime)) + 
+#   # Temperature plot
+#   geom_line(aes(datetime,solarInsol24, color = 'Solar Insolation 24hr')) +
+#   # geom_line(aes(datetime, na.locf(rollapply(irradiance, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Irradiance 24hr")) + 
+#   # Rockfall data scaled to match temperature range
+#   geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_insol / max_rockfalls),color = "Discrete Rockfalls"), alpha = 0.5, fill = "lightgray") +
+#   # Axis labels and limits
+#   labs(x = '', 
+#        y = bquote('Solar Insolation' ~ (kWh/m^2)), 
+#        title = 'Solar Insolation',
+#        color = "Legend") + 
+#   scale_y_continuous(limits = c(0, max_insol),  # Fix temperature axis limits
+#                      sec.axis = sec_axis(~ . * (max_rockfalls / max_insol), name = "Rockfall Count", breaks = seq(0, 40, 10)), expand = expansion(mult = c(0, 0.05))) + 
+#   scale_x_datetime(expand = c(-0.005, 0)) +
+#   scale_color_manual(values = c(
+#     "Solar Insolation 24hr" = "purple", 
+#                                 
+#     # "Temperature 24hr" = "red", 
+#                                
+#      "Discrete Rockfalls" = "lightgray")) +
+#   theme_publish() + 
+#   theme(legend.position = "bottom",
+#         legend.direction = "horizontal",
+#         legend.title = element_blank(),
+#         axis.title.x = element_blank(),
+#         axis.title.y = element_text(size = 11),
+#         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
+# 
+# # Display the updated plot
+# insol7_combined
+# 
+# 
+# #--------------------------
+# 
+# 
+# 
+# 
+# #wind
+# weatherplot7Wind <- ggplot(m7cont) + 
+#   geom_line(aes(datetime, windMS, color = 'Wind 1hr'), alpha = 0.2) + 
+#   geom_line(aes(datetime,na.locf(rollapply(windMS, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)), color = "Wind 24hr")) +
+#   labs(
+#     title = " Wind",
+#     x = "", 
+#     y = "Wind (m/s)"
+#   ) + 
+#   scale_y_continuous(expand = c(0, 0)) +  # Blank secondary y-axis 
+#   scale_x_datetime(expand = c(0, 0)) +
+#      scale_color_manual(values = c("Wind 1hr" = "darkgreen", 
+#                                 "Wind 24hr" = "darkgreen")) +
+#   theme_publish() + 
+# theme(legend.position = c(0.5, -0.25),  # Position legend at the bottom
+#       legend.direction = "horizontal", 
+#           legend.title = element_blank(),
+#           axis.title.x = element_blank(), 
+#           axis.title.y = element_text(size = 11),
+#           axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5)
+#     )
+# 
+# 
+# 
+# 
+# 
+# 
+# w7 <- weatherplot7Wind
+# w7
+# 
+# 
+# #add rockfall for wind
+# #-------------------------------------
+# # Define scaling factors
+# max_wind <- max(na.locf(rollapply(m7cont$windMS, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)))  # Max temperature
+# max_rockfalls <- 40  # Set max rockfall count to 40
+# 
+# # Create the combined plot
+# wind7_combined <- ggplot(m7cont, aes(x = datetime)) + 
+#   # Temperature plot
+#   # geom_line(aes(datetime,windMS, color = 'Wind 1hr')) +
+#   geom_line(aes(datetime,na.locf(rollapply(windMS, width = 24, FUN = mean, fill = NA, align = 'right', partial = TRUE)),  color = 'Wind 24hr')) +
+#   # Rockfall data scaled to match temperature range
+#   geom_area(data = rockfallsDailyCount, aes(x = as.POSIXct(avg_time), y = rockfall * (max_wind / max_rockfalls),color = "Discrete Rockfalls"), alpha = 0.5, fill = "lightgray") +
+#   # Axis labels and limits
+#   labs(x = '', 
+#        y = 'Wind (m/s)', 
+#        title = 'Wind',
+#        color = "Legend") + 
+#   scale_y_continuous(limits = c(0, max_wind),  # Fix temperature axis limits
+#                      sec.axis = sec_axis(~ . * (max_rockfalls / max_wind), name = "Rockfall Count", breaks = seq(0, 40, 10)), 
+#                      expand = expansion(mult = c(0, 0.05))) +  # Fix rockfall axis 0-40
+#   scale_x_datetime(expand = c(-0.005, 0)) +
+#   scale_color_manual(values = c(
+#     "Wind 24hr" = "darkgreen", 
+#                                 
+#     # "Temperature 24hr" = "red", 
+#                                
+#      "Discrete Rockfalls" = "lightgray")) +
+#   theme_publish() + 
+#   theme(legend.position = "bottom",
+#         legend.direction = "horizontal",
+#         legend.title = element_blank(),
+#         axis.title.x = element_blank(),
+#         axis.title.y = element_text(size = 11),
+#         axis.text.x = element_text(size = 10, angle = 40, vjust = 0.5))
+# 
+# # Display the updated plot
+# wind7_combined
+# 
+# 
+# #--------------------------
+# 
+# 
+# 
+# 
+# 
+# 
+# ggsave(file = here("figures/m7temp.svg"), plot = t7, height = 5, width = 7)
+# ggsave(file = here("figures/m7precipitation.svg"), plot = p7, height = 5, width = 7)
+# ggsave(file = here("figures/m7irradiance.svg"), plot = i7, height = 5, width = 7)
+# ggsave(file = here("figures/m7wind.svg"), plot = w7, height = 5, width = 7)
+# 
+# 
+# ggsave(file = here("figures/m7tempRockfalls.svg"), plot = t7_combined, height = 5, width = 7)
+# ggsave(file = here("figures/m7precipitationRockfalls.svg"), plot = p7_combined, height = 5, width = 7)
+# ggsave(file = here("figures/m7precipitationIntensityRockfalls.svg"), plot = pi7_combined, height = 5, width = 7)
+# ggsave(file = here("figures/m7irradianceRockfalls.svg"), plot = irr7_combined, height = 5, width = 7)
+# ggsave(file = here("figures/m7insolationRockfalls.svg"), plot = insol7_combined, height = 5, width = 7)
+# ggsave(file = here("figures/m7windRockfalls.svg"), plot = wind7_combined, height = 5, width = 7)
+# 
+# 
+# 
+# comb <- (t7_combined + p7_combined) / (pi7_combined + wind7_combined) / (irr7_combined + insol7_combined) +  # combining plots together into one larger one 
+#   plot_layout( guides = 'auto') &  
+#   theme(
+#     plot.margin = margin(0, 0, 30, 30)  # Increase space between plots
+#   )
+# comb
+# 
+# ggsave(file = here("figures/m7comb.png"), plot = comb, height = 12, width = 14)
 
 
 ```

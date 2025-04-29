@@ -44,10 +44,10 @@ pacman::p_load(
 ```{r read data}
 #add in the above {r = read data} echo=FALSE if we want to hide the code that generates a plot (though there are no plots in this chunk, just an aside...)
 
-m7Data <- readRDS(here("mine7StandardizedDataForML.rds")) 
+m7Data <- readRDS(here("mine7StandardizedDataForML.rds")) #ML and resampling prefers standardized data
 head(m7Data) 
 
-m7UnStandardData <- readRDS(here("mine7DataForML.rds")) 
+m7UnStandardData <- readRDS(here("mine7DataForML.rds")) #WOE requires non standardized data
 head(m7Data) 
 
 ```
@@ -57,7 +57,7 @@ head(m7Data)
 
 
 
-m7WOE <- subset(m7UnStandardData, select = -c(datetime))
+m7WOE <- subset(m7UnStandardData, select = -c(datetime,time))
 
 m7WOE <- m7WOE |> 
   mutate(irradiance = case_when(
@@ -65,16 +65,6 @@ m7WOE <- m7WOE |>
     .default = irradiance))
 df <-m7WOE
 options(scorecard.bin_close_right = FALSE, scorecard.bin_close_left = FALSE)
-
-breaks_list <- list(intensity = seq(min(df$intensity), max(df$intensity), by = ((max(df$intensity)-min(df$intensity))/5)), 
-                    rainmm = seq(min(df$rainmm), max(df$rainmm), by = ((max(df$rainmm)-min(df$rainmm))/5)),
-                    tempC = seq(min(df$tempC), max(df$tempC), by = ((max(df$tempC)-min(df$tempC))/5)), 
-                    irradiance = seq(min(df$irradiance), max(df$irradiance), by = ((max(df$irradiance)-min(df$irradiance))/5)),
-                    solarInsol24 = seq(min(df$solarInsol24), max(df$solarInsol24), by = ((max(df$solarInsol24)-min(df$solarInsol24))/5)),
-                    windMS = seq(min(df$windMS), max(df$windMS), by = ((max(df$windMS)-min(df$windMS))/5)), 
-                    sumrain6 = seq(min(df$sumrain6), max(df$sumrain6), by = ((max(df$sumrain6)-min(df$sumrain6))/5)),
-                    sumrain24 = seq(min(df$sumrain24), max(df$sumrain24), by = ((max(df$sumrain24)-min(df$sumrain24))/5)),
-                    fp = seq(min(df$FP), max(df$FP), by = ((max(df$FP)-min(df$FP))/5)))
 
 woebin_hour <- woebin(df, 
                       y = 'rockfall', 
@@ -300,6 +290,8 @@ oneSELambdaNames <- oneSELambdaNames[oneSELambdaNames != "(Intercept)"]  # Exclu
 # accuracy_1se <- sum(diag(confusion_matrix_1se)) / sum(confusion_matrix_1se)
 # cat("Accuracy (lambda.1se): ", accuracy_1se, "\n")
 
+
+
 #modify training data to for best variable choice
 xSMOTE_filtered <- as.data.frame(xSMOTE[, colnames(xSMOTE) %in% minLambdaNames])
 x_test_filtered <- as.data.frame(x_test[, colnames(x_test) %in% minLambdaNames])
@@ -312,7 +304,7 @@ x_test_filtered <- as.data.frame(x_test[, colnames(x_test) %in% minLambdaNames])
 
 ```{r create tasks}
 
-#create a task
+#create a task, which is how MLR handles inputs
 
 xSMOTE_filtered$rockfall <- ySMOTE
 xySMOTE_filtered <- xSMOTE_filtered
@@ -429,7 +421,7 @@ learnerSVM$predict_type <- "prob"
 
 tuner <- tnr("grid_search", batch_size = 11)
 
-tuneSVM <- mlr3tuning::tune(task = traintask, tuner = tuner, learner = learnerSVM, resampling = rsmp("cv", folds = 10), measures = msr("classif.fbeta")) 
+tuneSVM <- mlr3tuning::tune(task = traintask, tuner = tuner, learner = learnerSVM, resampling = rsmp("cv", folds = 10), measures = msr("classif.fbeta", na_value = 0)) 
 
 
 tuneSVM$result #best hyper parameters
@@ -557,104 +549,6 @@ test_with_predictions <- test_with_predictions %>%
   mutate(# Use the 'rockfall' column for actual values
     LOGPredictedClass = as.numeric(predicted_classes)
   )
-
-
-```
-
-
-```{r plot predictions as a time series of binary initiations}
-
-#this is not actually used and just plots the predictions
-# 
-# 
-# # Combine the test data with predictions and actual values
-# test_with_predictions<- subset(test_with_predictions, select = c(datetime, rockfall, RFPredictedClass, SVMPredictedClass, LOGPredictedClass)) 
-# 
-# predictionsForPlot <- test_with_predictions |> 
-#   mutate(RFPredictedClass = ifelse(RFPredictedClass == 2,1,0), SVMPredictedClass = ifelse(SVMPredictedClass == 2,1,0), LOGPredictedClass = ifelse(LOGPredictedClass == 2,1,0))
-# 
-# 
-# #create daily count
-# rockfallsDailyCount <- predictionsForPlot |>
-#   mutate(datetime = as.Date(as.POSIXct(datetime)), rockfall = as.numeric(rockfall)) |>  # Extract date from datetime
-#   group_by(datetime) |>
-#   summarize(rockfallDailySum = sum(rockfall), 
-#             predictedRFDailySum = sum(RFPredictedClass),
-#             predictedSVMDailySum = sum(SVMPredictedClass),
-#             predictedLOGDailySum = sum(LOGPredictedClass)
-#             )
-# 
-# 
-# PredictionTSComp <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(datetime))) + 
-#   geom_line(aes(y = rockfallDailySum, color = "Actual Data"), size = 1) +
-#   geom_line(aes(y = predictedRFDailySum, color = "Random Forest Prediction"), size = 1, alpha = 0.25) +
-#   geom_line(aes(y = predictedSVMDailySum, color = "Support Vector Machine Prediction"), size = 1, alpha = 0.25) +
-#   geom_line(aes(y = predictedLOGDailySum, color = "Logistic Regression Prediction"), size = 1, alpha = 0.25) +
-#   labs(
-#     title = 'Mine 8: Rockfall Initiation Hours',
-#     y = 'Count of Rockfall Initiation Hours',
-#     color = "Legend"
-#   ) + 
-#   scale_color_manual(values = c("Actual Data" = "red", "Random Forest Prediction" = "blue", 
-#                                 "Support Vector Machine Prediction" = "green", "Logistic Regression Prediction" = "grey")) +
-#   scale_x_datetime(expand = c(0, 0)) +
-#   theme_bw() + 
-#   theme(
-#     axis.title.x = element_blank(), 
-#     axis.text.y = element_text(size = 14), 
-#     axis.title.y = element_text(size = 14), 
-#     axis.text.x = element_text(size = 14), 
-#     plot.title = element_text(size = 18),
-#     legend.title = element_text(size = 14),
-#     legend.text = element_text(size = 12),
-#     legend.position = "right"  # Position the legend at the top
-#   )
-# 
-# 
-# ggsave(file = here("figures/PredictionTSComp.svg"), plot = PredictionTSComp, height = 6, width = 12)
-# 
-# 
-# 
-# # Calculate the 7-day rolling sum for each prediction
-# rockfallsDailyCount <- rockfallsDailyCount %>%
-#   mutate(
-#     rollingRockfallSum = rollapply(rockfallDailySum, width = 7, FUN = sum, align = "right", fill = NA),
-#     rollingRFPredictedSum = rollapply(predictedRFDailySum, width = 7, FUN = sum, align = "right", fill = NA),
-#     rollingSVMPredictedSum = rollapply(predictedSVMDailySum, width = 7, FUN = sum, align = "right", fill = NA),
-#     rollingLOGPredictedSum = rollapply(predictedLOGDailySum, width = 7, FUN = sum, align = "right", fill = NA))
-# 
-# # Create the plot with rolling sums
-# PredictionTSCompRolling <- ggplot(rockfallsDailyCount, aes(x = as.POSIXct(datetime))) + 
-#   geom_line(aes(y = rollingRockfallSum, color = "Actual Data (7-day rolling)"), size = 1) +
-#   geom_line(aes(y = rollingRFPredictedSum, color = "Random Forest Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
-#   geom_line(aes(y = rollingSVMPredictedSum, color = "Support Vector Machine Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
-#   geom_line(aes(y = rollingLOGPredictedSum, color = "Logistic Regression Prediction (7-day rolling)"), size = 1, alpha = 0.25) +
-#   labs(
-#     title = 'Mine 8: Rockfall Initiation Hours (7-day Rolling Sum)',
-#     y = 'Rolling Sum of Rockfall Initiation Hours',
-#     color = "Legend"
-#   ) + 
-#   scale_color_manual(values = c("Actual Data (7-day rolling)" = "red", 
-#                                 "Random Forest Prediction (7-day rolling)" = "blue", 
-#                                 "Support Vector Machine Prediction (7-day rolling)" = "green", 
-#                                 "Logistic Regression Prediction (7-day rolling)" = "grey")) +
-#   scale_x_datetime(expand = c(0, 0)) +
-#   theme_bw() + 
-#   theme(
-#     axis.title.x = element_blank(), 
-#     axis.text.y = element_text(size = 14), 
-#     axis.title.y = element_text(size = 14), 
-#     axis.text.x = element_text(size = 14), 
-#     plot.title = element_text(size = 18),
-#     legend.title = element_text(size = 14),
-#     legend.text = element_text(size = 12),
-#     legend.position = "right"  # Position the legend at the top
-#   )
-# 
-# # Display the plot
-# PredictionTSCompRolling
-# 
-# ggsave(file = here("figures/PredictionTSCompRolling.svg"), plot = PredictionTSCompRolling, height = 6, width = 12)
 
 
 ```
