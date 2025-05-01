@@ -23,33 +23,33 @@
 <g clip-path='url(#cpMC4wMHw1MDQuMDB8MC4wMHwzNjAuMDA=)'>
 </g>
 <defs>
-  <clipPath id='cpNDguNzh8NDk5LjAyfDQ3LjA4fDMxOS41Mg=='>
-    <rect x='48.78' y='47.08' width='450.24' height='272.44' />
+  <clipPath id='cpNDguOTZ8NDk5LjAyfDQ3LjMzfDMxOS4zNQ=='>
+    <rect x='48.96' y='47.33' width='450.05' height='272.02' />
   </clipPath>
 </defs>
-<g clip-path='url(#cpNDguNzh8NDk5LjAyfDQ3LjA4fDMxOS41Mg==)'>
-<rect x='180.10' y='59.46' width='187.60' height='123.84' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; stroke-linejoin: miter; fill: #4682B4; fill-opacity: 0.80;' />
-<rect x='180.10' y='183.30' width='187.60' height='123.84' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; stroke-linejoin: miter; fill: #FF0000; fill-opacity: 0.80;' />
+<g clip-path='url(#cpNDguOTZ8NDk5LjAyfDQ3LjMzfDMxOS4zNQ==)'>
+<rect x='180.23' y='59.70' width='187.52' height='123.64' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; stroke-linejoin: miter; fill: #4682B4; fill-opacity: 0.80;' />
+<rect x='180.23' y='183.34' width='187.52' height='123.64' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; stroke-linejoin: miter; fill: #FF0000; fill-opacity: 0.80;' />
 </g>
 <g clip-path='url(#cpMC4wMHw1MDQuMDB8MC4wMHwzNjAuMDA=)'>
-<polyline points='48.78,319.52 48.78,47.08 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
-<text x='42.79' y='310.57' text-anchor='end' style='font-size: 9.60px; font-family: "Arial";' textLength='5.34px' lengthAdjust='spacingAndGlyphs'>0</text>
-<text x='42.79' y='234.83' text-anchor='end' style='font-size: 9.60px; font-family: "Arial";' textLength='16.01px' lengthAdjust='spacingAndGlyphs'>200</text>
-<text x='42.79' y='159.09' text-anchor='end' style='font-size: 9.60px; font-family: "Arial";' textLength='16.01px' lengthAdjust='spacingAndGlyphs'>400</text>
-<text x='42.79' y='83.35' text-anchor='end' style='font-size: 9.60px; font-family: "Arial";' textLength='16.01px' lengthAdjust='spacingAndGlyphs'>600</text>
-<polyline points='45.18,307.14 48.78,307.14 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
-<polyline points='45.18,231.40 48.78,231.40 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
-<polyline points='45.18,155.66 48.78,155.66 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
-<polyline points='45.18,79.92 48.78,79.92 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
-<polyline points='48.78,319.52 499.02,319.52 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
-<polyline points='273.90,323.12 273.90,319.52 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
-<text transform='translate(15.53,183.30) rotate(-90)' text-anchor='middle' style='font-size: 16.00px; font-family: "Arial";' textLength='42.70px' lengthAdjust='spacingAndGlyphs'>Count</text>
-<rect x='113.84' y='335.08' width='320.11' height='24.92' style='stroke-width: 0.00; stroke: none;' />
-<rect x='120.53' y='341.76' width='16.52' height='11.55' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; stroke-linejoin: miter; fill: #4682B4; fill-opacity: 0.80;' />
-<rect x='290.43' y='341.76' width='16.52' height='11.55' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; stroke-linejoin: miter; fill: #FF0000; fill-opacity: 0.80;' />
-<text x='143.73' y='352.55' style='font-size: 14.00px; font-family: "Arial";' textLength='140.01px' lengthAdjust='spacingAndGlyphs'>Rockfall Not Observed</text>
-<text x='313.63' y='352.55' style='font-size: 14.00px; font-family: "Arial";' textLength='114.34px' lengthAdjust='spacingAndGlyphs'>Rockfall Observed</text>
-<text x='273.90' y='19.77' text-anchor='middle' style='font-size: 18.00px; font-weight: bold; font-family: "Arial";' textLength='331.06px' lengthAdjust='spacingAndGlyphs'>Distribution of Rockfall Validated Data </text>
-<text x='273.90' y='39.21' text-anchor='middle' style='font-size: 18.00px; font-weight: bold; font-family: "Arial";' textLength='206.04px' lengthAdjust='spacingAndGlyphs'>Resampled with SMOTE</text>
+<polyline points='48.96,319.35 48.96,47.33 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
+<text x='42.97' y='310.43' text-anchor='end' style='font-size: 9.60px; font-family: "Arial";' textLength='5.34px' lengthAdjust='spacingAndGlyphs'>0</text>
+<text x='42.97' y='234.80' text-anchor='end' style='font-size: 9.60px; font-family: "Arial";' textLength='16.01px' lengthAdjust='spacingAndGlyphs'>200</text>
+<text x='42.97' y='159.18' text-anchor='end' style='font-size: 9.60px; font-family: "Arial";' textLength='16.01px' lengthAdjust='spacingAndGlyphs'>400</text>
+<text x='42.97' y='83.56' text-anchor='end' style='font-size: 9.60px; font-family: "Arial";' textLength='16.01px' lengthAdjust='spacingAndGlyphs'>600</text>
+<polyline points='45.36,306.99 48.96,306.99 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
+<polyline points='45.36,231.36 48.96,231.36 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
+<polyline points='45.36,155.74 48.96,155.74 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
+<polyline points='45.36,80.12 48.96,80.12 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
+<polyline points='48.96,319.35 499.02,319.35 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
+<polyline points='273.99,322.95 273.99,319.35 ' style='stroke-width: 0.53; stroke-linecap: butt;' />
+<text transform='translate(15.64,183.34) rotate(-90)' text-anchor='middle' style='font-size: 16.00px; font-family: "Arial";' textLength='42.70px' lengthAdjust='spacingAndGlyphs'>Count</text>
+<rect x='113.93' y='334.90' width='320.12' height='25.10' style='stroke-width: 0.00; stroke: none;' />
+<rect x='120.62' y='341.59' width='16.52' height='11.72' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; stroke-linejoin: miter; fill: #4682B4; fill-opacity: 0.80;' />
+<rect x='290.52' y='341.59' width='16.52' height='11.72' style='stroke-width: 1.07; stroke: none; stroke-linecap: butt; stroke-linejoin: miter; fill: #FF0000; fill-opacity: 0.80;' />
+<text x='143.82' y='352.47' style='font-size: 14.00px; font-family: "Arial";' textLength='140.02px' lengthAdjust='spacingAndGlyphs'>Rockfall Not Observed</text>
+<text x='313.72' y='352.47' style='font-size: 14.00px; font-family: "Arial";' textLength='114.35px' lengthAdjust='spacingAndGlyphs'>Rockfall Observed</text>
+<text x='273.99' y='19.92' text-anchor='middle' style='font-size: 18.00px; font-weight: bold; font-family: "Arial";' textLength='332.06px' lengthAdjust='spacingAndGlyphs'>Distribution of Rockfall Validated Data </text>
+<text x='273.99' y='39.36' text-anchor='middle' style='font-size: 18.00px; font-weight: bold; font-family: "Arial";' textLength='206.04px' lengthAdjust='spacingAndGlyphs'>Resampled with SMOTE</text>
 </g>
 </svg>
